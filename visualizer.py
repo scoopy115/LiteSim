@@ -18,10 +18,8 @@ class RobotVisualizer:
     def __init__(self):
         self.current_joints = [0.0] * config.JOINT_COUNT
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.model_dir = os.path.join(self.script_dir, "model")
         self.chain = None
         self.link_map = [] 
-        self.found_files_cache = {}
         self.plotter = None
         self.ee_actor = None
 
@@ -32,21 +30,21 @@ class RobotVisualizer:
         self.last_trace_pos = None
         self.trace_source = 'wrist' 
         self.eef_offset_z = 0.0     
-
-    def index_all_files(self):
-        if not os.path.exists(self.model_dir): return
-        for root, dirs, files in os.walk(self.model_dir):
-            for file in files:
-                self.found_files_cache[file.lower()] = os.path.join(root, file)
-
-    def find_urdf_file(self):
-        for name, path in self.found_files_cache.items():
-            if name.endswith(".urdf"): return path
+    
+    def get_urdf_path(self):
+        """Zoekt de .urdf direct in de model map"""
+        if not os.path.exists(config.MODEL_DIR):
+            print(f"[ERR] Model directory not found: {config.MODEL_DIR}")
+            return None
+        for f in os.listdir(config.MODEL_DIR):
+            if f.lower().endswith(".urdf"):
+                return os.path.join(config.MODEL_DIR, f)
         return None
 
-    def find_stl_deep(self, target_name):
-        if not target_name: return None
-        return self.found_files_cache.get(target_name.lower())
+    def get_mesh_path(self, filename):
+        """Geeft het directe pad naar een STL in de visual map"""
+        if not filename: return None
+        return os.path.join(config.VISUAL_DIR, filename)
 
     def get_urdf_root_link_name(self, urdf_path):
         try:
@@ -62,9 +60,7 @@ class RobotVisualizer:
                                   title=f"{config.APP_NAME} {config.APP_VERSION} | UFACTORY Lite 6 Simulator | 3D View")
         self.plotter.set_background("#0f0f0f")
         self.plotter.enable_lightkit()
-        
-        self.index_all_files()
-        urdf_path = self.find_urdf_file()
+        urdf_path = self.get_urdf_path()
         if not urdf_path:
             print("URDF not found!")
             return None
@@ -102,21 +98,21 @@ class RobotVisualizer:
 
             print(f"Link {i} ('{link.name}') -> Mapped to: {expected_stl}")
 
-            stl_path = self.find_stl_deep(expected_stl)
+            # AANGEPAST: Direct path lookup ipv find_stl_deep
             mesh = None
 
             if is_end_effector:
                 mesh = pv.PolyData() # Empty 3D object
             elif expected_stl:
-                stl_path = self.find_stl_deep(expected_stl)
-                if stl_path:
+                stl_path = self.get_mesh_path(expected_stl)
+                if os.path.exists(stl_path):
                     try: 
                         mesh = pv.read(stl_path)
                         if mesh.n_points > 0:
                             mesh = mesh.compute_normals(cell_normals=False, point_normals=True, split_vertices=True, feature_angle=30.0)
                     except: pass
                 else:
-                    print(f"   [!] NOT FOUND: {expected_stl}")
+                    print(f"   [!] NOT FOUND: {expected_stl} in {config.VISUAL_DIR}")
 
             if mesh is None:
                 self.link_map.append(None)

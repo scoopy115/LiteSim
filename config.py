@@ -1,9 +1,10 @@
 # config.py
 import sys
+import os
 
 # --- APP INFO ---
 APP_NAME = "LiteSim"
-APP_VERSION = "1.9.3"
+APP_VERSION = "1.9.4"
 AUTHOR = "Dylan Kiesebrink"
 GITHUB_URL = "https://github.com/scoopy115/LiteSim"
 PORTFOLIO_URL = "https://dylankiesebrink.nl"
@@ -27,6 +28,11 @@ except ImportError:
     print("[SYSTEM] xarm-python-sdk not found. Working in simulation-mode only.")
 
 # --- FILE PATHS ---
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+MODEL_DIR = os.path.join(PROJECT_ROOT, "model")
+VISUAL_DIR = os.path.join(MODEL_DIR, "visual")
+EXAMPLES_DIR = os.path.join(PROJECT_ROOT, "examples")
+ICON_PATH = os.path.join("assets", "icon.png")
 HISTORY_FILE = "recent_scripts.txt" 
 STL_HISTORY_FILE = "recent_stls.txt"
 

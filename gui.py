@@ -29,6 +29,21 @@ class AppContext:
 class ControlPanel(tk.Tk):
     def __init__(self):
         super().__init__()
+        #Load icon
+        self.app_icon = None
+        self.header_icon = None
+
+        try:
+            icon_path = os.path.join(os.path.dirname(__file__), "assets", "icon.png")
+            
+            if os.path.exists(icon_path):
+                self.app_icon = tk.PhotoImage(file=icon_path)
+                self.iconphoto(True, self.app_icon)
+                self.wm_iconname("LiteSim")
+                self.header_icon = self.app_icon.subsample(12, 12) 
+        except Exception as e:
+            print(f"[SYSTEM] Could not load app icon: {e}")
+        
         self.title(f"{config.APP_NAME} {config.APP_VERSION} | UFACTORY Lite 6 Simulator | Controls")
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
@@ -76,24 +91,39 @@ class ControlPanel(tk.Tk):
         self._apply_modern_theme()
 
     def _load_history(self):
-        if os.path.exists(HISTORY_FILE):
+        # Reset list
+        self.script_history = []
+        if os.path.exists(config.EXAMPLES_DIR):
             try:
-                with open(HISTORY_FILE, "r") as f:
+                for filename in os.listdir(config.EXAMPLES_DIR):
+                    if filename.endswith(".py"):
+                        full_path = os.path.join(config.EXAMPLES_DIR, filename)
+                        self.script_history.append(full_path)
+            except Exception as e:
+                print(f"[GUI] Error loading examples: {e}")
+
+        if os.path.exists(config.HISTORY_FILE):
+            try:
+                with open(config.HISTORY_FILE, "r") as f:
                     lines = f.readlines()
                     for line in lines:
                         path = line.strip()
                         if path and os.path.exists(path):
                             if path not in self.script_history:
                                 self.script_history.append(path)
-                
-                display_names = [os.path.basename(p) for p in self.script_history]
-                self.combo_history['values'] = display_names
-                if display_names:
-                    self.combo_history.current(0)
-                    self.current_script_path = self.script_history[0]
-                    self.btn_run.config(state=tk.NORMAL)
-            except Exception as e:
-                print(f"History error: {e}")
+            except: pass
+        display_names = []
+        for p in self.script_history:
+            name = os.path.basename(p)
+            if config.EXAMPLES_DIR in p:
+                name = f"[Example] {name}"
+            display_names.append(name)
+            
+        self.combo_history['values'] = display_names
+        if display_names:
+            self.combo_history.current(0)
+            self.current_script_path = self.script_history[0]
+            self.btn_run.config(state=tk.NORMAL)
 
     def _apply_modern_theme(self):
         sv_ttk.set_theme("dark")
@@ -184,7 +214,7 @@ class ControlPanel(tk.Tk):
         self.update_idletasks()
         
         try:
-            full_path = self.viz.find_stl_deep(filename)
+            full_path = self.viz.get_mesh_path(filename)
             if not full_path:
                 messagebox.showerror("Not found", f"Can not find file:\n{filename}")
                 return
@@ -232,6 +262,10 @@ class ControlPanel(tk.Tk):
         # 1. LEFT
         header_left = ttk.Frame(header_frame)
         header_left.pack(side=tk.LEFT)
+
+        if self.header_icon:
+            icon_lbl = ttk.Label(header_left, image=self.header_icon)
+            icon_lbl.pack(side=tk.LEFT, padx=(0, 10), anchor="center")
 
         # Title
         lbl_title = ttk.Label(
@@ -286,21 +320,32 @@ class ControlPanel(tk.Tk):
         
         top_container.rowconfigure(0, weight=1)
 
-        #  LEFT
+        # LEFT
         left_col = ttk.Frame(top_container)
         left_col.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
 
-        # 1. Connection
-        conn_frame = ttk.LabelFrame(left_col, text="Physical Connection")
+        # 1. Connection Frame
+        conn_frame = ttk.LabelFrame(left_col, text="Physical Connection", padding=10)
         conn_frame.pack(fill=tk.X, pady=5)
         
-        ttk.Label(conn_frame, text="IP:").pack(anchor="w", padx=5)
+        conn_header = ttk.Frame(conn_frame)
+        conn_header.pack(fill=tk.X, pady=(0, 2))
+        
+        ttk.Label(conn_header, text="IP Address:").pack(side=tk.LEFT)
+        bg_color = ttk.Style().lookup("TFrame", "background")
+        self.status_canvas = tk.Canvas(conn_header, width=14, height=14, bg=bg_color, highlightthickness=0)
+        self.status_canvas.pack(side=tk.RIGHT)
+
+        self.status_dot = self.status_canvas.create_oval(2, 2, 12, 12, fill="#ff5555", outline="")
+        
         self.ent_ip = ttk.Entry(conn_frame)
-        self.ent_ip.pack(fill=tk.X, padx=5, pady=(0, 5))
+        self.ent_ip.pack(fill=tk.X, pady=(0, 5))
         self.ent_ip.insert(0, "192.168.1.xxx")
         
+        self.btn_connect = ttk.Button(conn_frame, text="Connect", command=self._toggle_connection)
+        self.btn_connect.pack(fill=tk.X, pady=(0, 5))
         self.btn_scan = ttk.Button(conn_frame, text="Scan for Lite 6", command=self._scan_network)
-        self.btn_scan.pack(fill=tk.X, padx=5, pady=(0, 5))
+        self.btn_scan.pack(fill=tk.X)
 
         # 2. Sliders (Joints)
         lf = ttk.LabelFrame(left_col, text="Manual Joint Control")
@@ -634,13 +679,6 @@ class ControlPanel(tk.Tk):
         self.btn_pause.config(text="⏸ Pause")
         self._toggle_controls(True)
         
-        # IP Connect
-        ip = self.ent_ip.get().strip()
-        if ip and "xxx" not in ip:
-            self.api.connect_real_robot(ip)
-        else:
-            self.api.disconnect_real_robot()
-            
         threading.Thread(target=self._run_script_thread, args=(self.current_script_path,), daemon=True).start()
 
     def _on_script_finished(self):
@@ -710,56 +748,107 @@ class ControlPanel(tk.Tk):
             finally:
                 self.rendering_paused = False
 
-    # SCAN FUNCTION
+    # SCAN NETWORK FUNCTION
+    def _set_status_color(self, color_code):
+        self.status_canvas.itemconfig(self.status_dot, fill=color_code)
+
+    def _toggle_connection(self):
+        # Check status via API
+        if self.api.is_connected:
+            # DISCONNECT
+            self.api.disconnect_real_robot()
+            
+            self.btn_connect.config(text="Connect", state=tk.NORMAL)
+            self.ent_ip.config(state=tk.NORMAL)
+            self._set_status_color("#ff5555")
+            self.btn_scan.config(state=tk.NORMAL)
+            
+        else:
+            # CONNECT
+            ip = self.ent_ip.get().strip()
+            if not ip or "xxx" or "xx" or "x" in ip:
+                print("Invalid IP", "Please enter a valid IP address.")
+                return
+
+            # UI Update: Connecting
+            self.btn_connect.config(state=tk.DISABLED, text="Connecting...")
+            self.ent_ip.config(state=tk.DISABLED)
+            self._set_status_color("#ffb86c")
+            threading.Thread(target=self._connect_thread, args=(ip,), daemon=True).start()
+
+    def _connect_thread(self, ip):
+        success = self.api.connect_real_robot(ip)
+        
+        self.after(0, lambda: self._connect_complete(success))
+
+    def _connect_complete(self, success):
+        if success:
+            # Connected
+            self.btn_connect.config(text="Disconnect Lite 6", state=tk.NORMAL)
+            self._set_status_color("#50fa7b")
+            # IP field stays disabled during the connection
+        else:
+            # Mislukt
+            self.btn_connect.config(text="Connect", state=tk.NORMAL)
+            self.ent_ip.config(state=tk.NORMAL)
+            self._set_status_color("#ff5555")
+            messagebox.showerror("Connection Failed", "Could not connect to robot.\nCheck IP and/or cable.")
+
+    # AANGEPAST: Scan functie voor auto-connect
+    def _scan_complete(self, ips):
+        self.btn_scan.config(text="Scan for Lite 6", state=tk.NORMAL)
+        self._set_status_color("#ff5555")
+        
+        if ips:
+            found = ips[0]
+            self.ent_ip.delete(0, tk.END)
+            self.ent_ip.insert(0, found)
+            
+            # Auto Connect Logic
+            self.ctx.log_queue.put(f"[GUI] Auto-connecting to found IP: {found}")
+            self._toggle_connection() # Connect to ip
+            
+            self.ctx.log_queue.put("Found!", f"Robot found at {found} with port {ROBOT_SCAN_PORT}\nConnecting automatically...")
+        else:
+            messagebox.showinfo("Not found", f"No xArm/Lite 6 robots found on port {ROBOT_SCAN_PORT}.")
+
     def _scan_network(self):
         self.btn_scan.config(text="Scanning...", state=tk.DISABLED)
+        self._set_status_color("#ffb86c") # Oranje tijdens scannen
         threading.Thread(target=self._scan_thread, daemon=True).start()
 
     def _scan_thread(self):
         found_ips = []
-        
-        # Get local network range
         base_ip = "192.168.1"
+        # Find local subnet
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
             s.close()
             base_ip = ".".join(local_ip.split(".")[:3])
-        except Exception:
+        except: 
             pass 
-
-        self.ctx.log_queue.put(f"[SCAN] Scanning in range: {base_ip}.1 - {base_ip}.254 on port {ROBOT_SCAN_PORT}...")
-
-        # Scan addresses
+        
+        self.ctx.log_queue.put(f"[SCAN] Range: {base_ip}.1 - 254 | Port: {config.ROBOT_SCAN_PORT}")
+        # Scan network for addresses 1 - 255 on port {ROBOT_SCAN_PORT}
         for i in range(1, 255):
+            if self.ctx.stop_flag:
+                break
+
             target_ip = f"{base_ip}.{i}"
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(0.05)
+            sock.settimeout(0.05) # 50ms timeout per IP
             
             try:
-                result = sock.connect_ex((target_ip, ROBOT_SCAN_PORT))
-                if result == 0:
-                    print(f"[SCAN] Found: {target_ip}")
+                if sock.connect_ex((target_ip, config.ROBOT_SCAN_PORT)) == 0:
                     found_ips.append(target_ip)
-            except:
+                    self.ctx.log_queue.put(f"[SCAN] Ping succes: {target_ip}")
+            except: 
                 pass
-            finally:
+            finally: 
                 sock.close()
-        
         self.after(0, lambda: self._scan_complete(found_ips))
-
-    def _scan_complete(self, ips):
-        self.btn_scan.config(text="Scan", state=tk.NORMAL)
-        if ips:
-            found = ips[0]
-            self.ent_ip.delete(0, tk.END)
-            self.ent_ip.insert(0, found)
-            
-            msg = f"Found xArm/Lite6 units:\n" + "\n".join(ips)
-            messagebox.showinfo("Found!", msg)
-        else:
-            messagebox.showinfo("Not found", f"Did not find any xArm/Lite6 robots on port {ROBOT_SCAN_PORT} on this network.")
 
     def _run_script_thread(self, path):
         if 'xarm' in sys.modules: del sys.modules['xarm']
@@ -792,20 +881,17 @@ class ControlPanel(tk.Tk):
     def _on_close(self):
         print("[SYSTEM] Closing application...")
         self.ctx.stop_flag = True
-        if self.api:
+        
+        # FORCEER DISCONNECT BIJ AFSLUITEN
+        if self.api: 
             self.api.disconnect_real_robot()
-        
-        try: 
-            if self.viz and self.viz.plotter and not self.viz.plotter.closed:
-                self.viz.plotter.close()
-        except Exception: 
-            pass
-        
-        try:
-            self.destroy()
-        except Exception:
-            pass
             
+        try: 
+            if self.viz and self.viz.plotter and hasattr(self.viz.plotter, 'ren_win'):
+                self.viz.plotter.close()
+        except: pass
+        try: self.destroy()
+        except: pass
         sys.exit(0)
 
 if __name__ == "__main__":

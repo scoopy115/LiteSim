@@ -1,12 +1,18 @@
 # robot_api.py
 import time
 import math
+import sys
+
+try:
+    from xarm.wrapper import XArmAPI as RealXArmAPI
+    HAS_REAL_SDK = True
+except ImportError:
+    HAS_REAL_SDK = False
+
 import config
 from utils import normalize_angles, rpy_to_matrix
 
-# Only import RealXArmAPI when available (this gets checked in config.py)
-if config.HAS_REAL_SDK:
-    from xarm.wrapper import XArmAPI as RealXArmAPI
+GLOBAL_API_INSTANCE = None
 
 class SimXArmAPI:
     def __init__(self, ctx, chain):
@@ -21,34 +27,61 @@ class SimXArmAPI:
         
         self.real_arm = None
 
+    def is_connected(self):
+        if self.real_arm and HAS_REAL_SDK:
+            return self.real_arm.connected # Use connected from xArm SDK
+        return False
+
     def connect_real_robot(self, ip):
+        # GUI uses to connect real Lite 6
         if not ip or not ip.strip() or "xxx" in ip:
-            self.real_arm = None
-            return
+            return False
             
-        if not config.HAS_REAL_SDK:
+        if not HAS_REAL_SDK:
             self._log("[WARN] xarm-python-sdk missing.")
-            return
+            return False
 
         try:
             self._log(f"[REAL] Connecting to {ip}...")
+            # Connect
             self.real_arm = RealXArmAPI(ip)
-            self.real_arm.clean_warn()
-            self.real_arm.clean_error()
-            self.real_arm.motion_enable(True)
-            self.real_arm.set_mode(0)
-            self.real_arm.set_state(0)
-            self._log("[REAL] Connected!")
+            
+            # Check if connected
+            if self.real_arm.connected:
+                self.real_arm.clean_warn()
+                self.real_arm.clean_error()
+                self.real_arm.motion_enable(True)
+                self.real_arm.set_mode(0)
+                self.real_arm.set_state(0)
+                self._log("[REAL] Connected successfully!")
+                return True
+            else:
+                self._log("[REAL] Connection failed (SDK returned False).")
+                self.real_arm = None
+                return False
+                
         except Exception as e:
             self._log(f"[REAL ERROR] {e}")
             self.real_arm = None
+            return False
 
     def disconnect_real_robot(self):
+        # GUI uses to disconnect real Lite 6
         if self.real_arm:
-            try: self.real_arm.disconnect()
+            try: 
+                self.real_arm.disconnect()
             except: pass
             self.real_arm = None
-            self._log("[REAL] Disconnected.")
+            self._log("[REAL] Disconnected manually/on-exit.")
+
+    # Ignoring disconnecting and connecting to robot because GUI will handle the connection/disconnection
+    def disconnect(self): 
+        self._log("[SCRIPT] Script requested disconnect -> IGNORED (Managed by GUI).")
+        return 0
+
+    def connect(self, *args, **kwargs):
+        self._log("[SCRIPT] Script requested connect -> IGNORED (Managed by GUI).")
+        return 0
 
     @property
     def version(self): return "sim-lite6-v12.0-scanner"
