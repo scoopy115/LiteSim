@@ -56,7 +56,8 @@ VSVersionInfo(
 args = [
     'main.py',                        
     f'--name={APP_NAME}',             
-    '--noconsole',                    
+    '--noconsole',      
+    '--onefile',                    
     '--clean',                        
     f'--icon={ICON_PATH}',            
     
