@@ -753,48 +753,46 @@ class ControlPanel(tk.Tk):
         self.status_canvas.itemconfig(self.status_dot, fill=color_code)
 
     def _toggle_connection(self):
-        # Check status via API
         if self.api.is_connected:
-            # DISCONNECT
             self.api.disconnect_real_robot()
-            
             self.btn_connect.config(text="Connect", state=tk.NORMAL)
             self.ent_ip.config(state=tk.NORMAL)
-            self._set_status_color("#ff5555")
+            self._set_status_color("#ff5555") # Rood
             self.btn_scan.config(state=tk.NORMAL)
-            
+            self.ctx.log_queue.put("[GUI] Disconnected manually.")
         else:
             # CONNECT
             ip = self.ent_ip.get().strip()
-            if not ip or "xxx" or "xx" or "x" in ip:
-                print("Invalid IP", "Please enter a valid IP address.")
+            
+            allowed = set("0123456789.")
+            if not ip or not set(ip).issubset(allowed):
+                messagebox.showwarning("Invalid IP", "IP Address contains invalid characters.\nOnly numbers (0-9) and dots (.) are allowed.")
                 return
 
-            # UI Update: Connecting
             self.btn_connect.config(state=tk.DISABLED, text="Connecting...")
             self.ent_ip.config(state=tk.DISABLED)
-            self._set_status_color("#ffb86c")
+            self._set_status_color("#ffb86c") # Oranje
+            
             threading.Thread(target=self._connect_thread, args=(ip,), daemon=True).start()
 
     def _connect_thread(self, ip):
-        success = self.api.connect_real_robot(ip)
-        
-        self.after(0, lambda: self._connect_complete(success))
+        success, msg = self.api.connect_real_robot(ip)
+        self.after(0, lambda: self._connect_complete(success, msg))
 
-    def _connect_complete(self, success):
+    def _connect_complete(self, success, msg):
         if success:
-            # Connected
-            self.btn_connect.config(text="Disconnect Lite 6", state=tk.NORMAL)
-            self._set_status_color("#50fa7b")
-            # IP field stays disabled during the connection
+            self.btn_connect.config(text="Disconnect", state=tk.NORMAL)
+            self._set_status_color("#50fa7b") # Groen
+            self.ctx.log_queue.put(f"[GUI] Status: {msg}")
         else:
-            # Mislukt
             self.btn_connect.config(text="Connect", state=tk.NORMAL)
-            self.ent_ip.config(state=tk.NORMAL)
-            self._set_status_color("#ff5555")
-            messagebox.showerror("Connection Failed", "Could not connect to robot.\nCheck IP and/or cable.")
+            self.ent_ip.config(state=tk.NORMAL) 
+            self._set_status_color("#ff5555") # Rood
+            
+            self.ctx.log_queue.put(f"[CONNECTION FAILED] {msg}")
+            
+            messagebox.showerror("Connection Failed", f"Could not connect:\n{msg}")
 
-    # AANGEPAST: Scan functie voor auto-connect
     def _scan_complete(self, ips):
         self.btn_scan.config(text="Scan for Lite 6", state=tk.NORMAL)
         self._set_status_color("#ff5555")

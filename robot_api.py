@@ -26,27 +26,25 @@ class SimXArmAPI:
         self.last_rpy = [180, 0, 0]
         
         self.real_arm = None
-
+    
+    @property
     def is_connected(self):
         if self.real_arm and HAS_REAL_SDK:
             return self.real_arm.connected # Use connected from xArm SDK
         return False
 
     def connect_real_robot(self, ip):
-        # GUI uses to connect real Lite 6
-        if not ip or not ip.strip() or "xxx" in ip:
-            return False
+        if not ip or not ip.strip():
+            return False, "IP address cannot be empty."
             
         if not HAS_REAL_SDK:
-            self._log("[WARN] xarm-python-sdk missing.")
-            return False
+            return False, "xArm Python SDK is not installed."
 
         try:
             self._log(f"[REAL] Connecting to {ip}...")
-            # Connect
+            
             self.real_arm = RealXArmAPI(ip)
             
-            # Check if connected
             if self.real_arm.connected:
                 self.real_arm.clean_warn()
                 self.real_arm.clean_error()
@@ -54,16 +52,15 @@ class SimXArmAPI:
                 self.real_arm.set_mode(0)
                 self.real_arm.set_state(0)
                 self._log("[REAL] Connected successfully!")
-                return True
+                return True, "Connected"
             else:
-                self._log("[REAL] Connection failed (SDK returned False).")
                 self.real_arm = None
-                return False
+                return False, "Connection timed out (Check IP/Cable)"
                 
         except Exception as e:
-            self._log(f"[REAL ERROR] {e}")
             self.real_arm = None
-            return False
+            # Dit vangt nu ook "xxx" af (geeft een DNS of gaierror)
+            return False, f"Connection Error: {e}"
 
     def disconnect_real_robot(self):
         # GUI uses to disconnect real Lite 6
