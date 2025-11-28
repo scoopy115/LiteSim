@@ -12,6 +12,11 @@ import traceback
 import types
 import config
 import sv_ttk
+import platform
+import json
+import zipfile
+from pathlib import Path
+from urllib.request import urlretrieve, urlopen
 from visualizer import RobotVisualizer
 from robot_api import SimXArmAPI
 from config import GLOBAL_API_INSTANCE, JOINT_COUNT, HISTORY_FILE, STL_HISTORY_FILE, ROBOT_SCAN_PORT, GITHUB_URL, PORTFOLIO_URL
@@ -74,11 +79,12 @@ class ControlPanel(tk.Tk):
         self.rendering_paused = False
         self.scale_mm_var = tk.BooleanVar(value=True)
         self.trace_var = tk.BooleanVar(value=False)
-        
+        self.pending_update_data = None
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         
         self.rendering_paused = False
 
+        self._start_update_check()
         self._build_ui()
         self._load_history()
         self._load_stl_history()
@@ -137,7 +143,8 @@ class ControlPanel(tk.Tk):
         style.configure("Sub.TLabel", foreground="#bbbbbb") 
         style.configure("Link.TLabel", foreground="#4da6ff", font=base_font + ("underline",))
         
-        style.configure("Accent.TButton", font=base_font + ("bold",))
+        style.configure("Accent.TButton", font=("Helvetica", 14), padding=(10, 5))
+        style.configure("Small.Accent.TButton", font=("Helvetica", 9, "bold"), padding=(5, 0))
 
         self.colors = {
             "log_bg": "#1c1c1c", 
@@ -260,7 +267,7 @@ class ControlPanel(tk.Tk):
         header_frame = ttk.Frame(main)
         header_frame.pack(fill=tk.X, pady=(0, 15))
 
-        # 1. LEFT
+        # 1. LEFT CONTAINER
         header_left = ttk.Frame(header_frame)
         header_left.pack(side=tk.LEFT)
 
@@ -268,24 +275,38 @@ class ControlPanel(tk.Tk):
             icon_lbl = ttk.Label(header_left, image=self.header_icon)
             icon_lbl.pack(side=tk.LEFT, padx=(0, 10), anchor="center")
 
+        text_container = ttk.Frame(header_left)
+        text_container.pack(side=tk.LEFT, anchor="center")
+
+        title_row = ttk.Frame(text_container)
+        title_row.pack(anchor="w", fill=tk.X)
+
         # Title
         lbl_title = ttk.Label(
-            header_left, 
+            title_row, 
             text=f"{config.APP_NAME} {config.APP_VERSION}", 
             font=("Helvetica", 20, "bold")
         )
-        lbl_title.pack(anchor="w") # 'w' = West (Left align)
+        lbl_title.pack(side=tk.LEFT)
 
-        # Subtitle
+        # Update button
+        self.btn_update_available = ttk.Button(
+            title_row, 
+            text="Update Available",
+            style="Small.Accent.TButton", 
+            command=self._on_update_click
+        )
+
+        # SUBTITLE
         lbl_credits = ttk.Label(
-            header_left, 
+            text_container, 
             text="Made with ❤️ by Gemini 3 Pro & Dylan Kiesebrink", 
             font=("Helvetica", 10),
             foreground="#888888"
         )
         lbl_credits.pack(anchor="w")
 
-        # 2. Right
+        # Right
         header_right = ttk.Frame(header_frame)
         header_right.pack(side=tk.RIGHT)
 
@@ -350,7 +371,8 @@ class ControlPanel(tk.Tk):
 
         # 2. Sliders (Joints)
         lf = ttk.LabelFrame(left_col, text="Manual Joint Control")
-        lf.pack(fill=tk.BOTH, expand=True, pady=5)
+        # Let op: we packen deze straks pas, zodat we eerst de Quit button kunnen plaatsen
+        
         self.vars = []
         self.joint_labels = [] 
         
@@ -371,10 +393,12 @@ class ControlPanel(tk.Tk):
                       command=lambda val, idx=i: self._slider_cb(idx, val))
             s.pack(fill=tk.X, pady=(0, 5))
 
-        # Reset Buttons
-        ttk.Button(left_col, text="Reset to Home", command=self._home).pack(fill=tk.X, pady=2)
-        ttk.Button(left_col, text="Quit to Desktop", command=self._on_close).pack(fill=tk.X, pady=2)
+        
+        ttk.Button(lf, text="Reset to Home", command=self._home).pack(fill=tk.X, padx=5, pady=5)
 
+        ttk.Button(left_col, text="Quit to Desktop", command=self._on_close).pack(side=tk.BOTTOM, fill=tk.X, pady=10)
+
+        lf.pack(fill=tk.BOTH, expand=True, pady=5)
 
         # RIGHT
         right_col = ttk.Frame(top_container)
@@ -899,7 +923,6 @@ class ControlPanel(tk.Tk):
         print("[SYSTEM] Closing application...")
         self.ctx.stop_flag = True
         
-        # FORCEER DISCONNECT BIJ AFSLUITEN
         if self.api: 
             self.api.disconnect_real_robot()
             
@@ -910,6 +933,135 @@ class ControlPanel(tk.Tk):
         try: self.destroy()
         except: pass
         sys.exit(0)
+
+    # AUTO UPDATER
+    def _start_update_check(self):
+        threading.Thread(target=self._update_thread, daemon=True).start()
+
+    def _update_thread(self):
+        try:
+            url = f"https://api.github.com/repos/{config.REPO_OWNER}/{config.REPO_NAME}/releases/latest"
+            
+            with urlopen(url, timeout=3) as response:
+                data = json.loads(response.read().decode())
+                
+                latest_tag = data.get("tag_name", "").lstrip("v")
+                assets = data.get("assets", [])
+                
+                # Check if GitHub release is newer than current app
+                if self._is_version_newer(latest_tag, config.APP_VERSION):
+                    system = platform.system().lower() 
+                    
+                    download_url = None
+                    asset_name = ""
+                    
+                    search_term = ""
+                    if "windows" in system:
+                        search_term = "windows"
+                    elif "darwin" in system:
+                        search_term = "macos"
+                    else:
+                        return # Linux: Nothing
+                    
+                    # Search for match for OS
+                    for asset in assets:
+                        name = asset["name"].lower()
+                        if search_term in name and name.endswith(".zip"):
+                            download_url = asset["browser_download_url"]
+                            asset_name = asset["name"]
+                            break
+                    
+                    if download_url:
+                        self.pending_update_data = {
+                            "version": latest_tag,
+                            "url": download_url,
+                            "name": asset_name
+                        }
+                        self.after(0, lambda: self._show_update_dialog(latest_tag, download_url, asset_name))
+
+        except Exception as e:
+            pass 
+    
+    def _is_version_newer(self, latest, current):
+        try:
+            l_parts = [int(x) for x in latest.split('.') if x.isdigit()]
+            c_parts = [int(x) for x in current.split('.') if x.isdigit()]
+            return l_parts > c_parts
+        except: return False
+
+    def _show_update_dialog(self, version, download_url, asset_name):
+        msg = f"A new version of LiteSim is available: {version}\n\n"
+        # msg += f"Detected Platform: {platform.system()}\n"
+        # msg += f"File found: {asset_name}\n\n"
+        msg += "Do you want to download this update?"
+        
+        if messagebox.askyesno("Update Available", msg):
+            self._start_download(download_url, asset_name)
+        else:
+            self.btn_update_available.pack(side=tk.LEFT, padx=(10, 0))
+
+    def _on_update_click(self):
+        if self.pending_update_data:
+            self.btn_update_available.pack_forget()
+            
+            d = self.pending_update_data
+            self._show_update_dialog(d["version"], d["url"], d["name"])
+
+    def _start_download(self, url, filename):
+        self.dl_win = tk.Toplevel(self)
+        self.dl_win.title("Downloading Update...")
+        self.dl_win.geometry("400x150")
+        self.dl_win.resizable(False, False)
+        
+        ttk.Label(self.dl_win, text=f"Downloading {filename}...").pack(pady=(20, 10))
+        
+        self.progress = ttk.Progressbar(self.dl_win, orient="horizontal", length=300, mode="determinate")
+        self.progress.pack(pady=10)
+        
+        threading.Thread(target=self._download_worker, args=(url, filename), daemon=True).start()
+
+    def _download_worker(self, url, filename):
+        try:
+            download_dir = Path.home() / "Downloads"
+            target_path = download_dir / filename
+            
+            def report_hook(block_num, block_size, total_size):
+                downloaded = block_num * block_size
+                if total_size > 0:
+                    percent = (downloaded / total_size) * 100
+                    self.after(0, lambda: self.progress.configure(value=percent))
+
+            urlretrieve(url, target_path, reporthook=report_hook)
+            self.after(0, lambda: self.dl_win.destroy())
+            self.after(0, lambda: self._on_download_success(target_path, download_dir))
+            
+        except Exception as e:
+            self.after(0, lambda: messagebox.showerror("Download Failed", str(e)))
+            self.after(0, lambda: self.dl_win.destroy())
+
+    def _on_download_success(self, zip_path, folder_path):
+        try:
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(folder_path)
+                extracted_item_name = zip_ref.namelist()[0]
+                full_extracted_path = folder_path / extracted_item_name
+                
+            self.ctx.log_queue.put(f"[UPDATE] Successfully extracted to: {folder_path}")
+
+            if platform.system() == "Windows":
+                os.startfile(folder_path)
+                
+            elif platform.system() == "Darwin": # macOS
+                try:
+                    os.system(f"open -R '{full_extracted_path}'")
+                except:
+                    os.system(f"open '{folder_path}'")
+            
+            print("[UPDATE] Update finished. Closing application now.")
+            self._on_close()
+                    
+        except Exception as e:
+            messagebox.showerror("Extraction Error", f"Downloaded but failed to extract:\n{e}")
 
 if __name__ == "__main__":
     app = ControlPanel()
