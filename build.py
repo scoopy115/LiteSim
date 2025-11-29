@@ -12,6 +12,7 @@ ICON_PATH = os.path.join("assets", ICON_FILE)
 
 SEPARATOR = ":" if sys.platform == "darwin" else ";"
 
+
 # Windows
 def create_windows_version_file():
     v_parts = VERSION.split(".")
@@ -19,6 +20,7 @@ def create_windows_version_file():
     version_tuple = ", ".join(v_parts)
 
     content = f"""
+
 VSVersionInfo(
   ffi=FixedFileInfo(
     filevers=({version_tuple}),
@@ -52,10 +54,17 @@ VSVersionInfo(
         f.write(content)
     return "version_info.txt"
 
+if sys.platform == "win32":
+    # Windows: AppName_Version.exe
+    BUILD_NAME = f"{APP_NAME}_{VERSION}"
+else:
+    # macOS: AppName.app (without version for easier updating)
+    BUILD_NAME = f"{APP_NAME}"
+
 # BUILD ARGS
 args = [
     'main.py',                        
-    f'--name={APP_NAME}_{VERSION}',                                    
+    f'--name={BUILD_NAME}',                                    
     f'--icon={ICON_PATH}',            
     
     f'--add-data=assets{SEPARATOR}assets',
