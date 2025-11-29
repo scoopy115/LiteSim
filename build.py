@@ -38,11 +38,11 @@ VSVersionInfo(
       StringTable(
         u'040904B0',
         [StringStruct(u'CompanyName', u'{AUTHOR}'),
-        StringStruct(u'FileDescription', u'{APP_NAME} Control Panel'),
+        StringStruct(u'FileDescription', u'{APP_NAME} | UFACTORY Lite 6 Simulator'),
         StringStruct(u'FileVersion', u'{VERSION}'),
         StringStruct(u'InternalName', u'{APP_NAME}'),
-        StringStruct(u'LegalCopyright', u'© {AUTHOR}. All rights reserved.'),
-        StringStruct(u'OriginalFilename', u'{APP_NAME}.exe'),
+        StringStruct(u'LegalCopyright', u'© {AUTHOR}.'),
+        StringStruct(u'OriginalFilename', u'{BUILD_NAME}.exe'),
         StringStruct(u'ProductName', u'{APP_NAME}'),
         StringStruct(u'ProductVersion', u'{VERSION}')])
       ]), 
@@ -57,7 +57,7 @@ VSVersionInfo(
 if sys.platform == "win32":
     # Windows: AppName_Version.exe
     BUILD_NAME = f"{APP_NAME}_{VERSION}"
-else:
+elif sys.platform == "darwin":
     # macOS: AppName.app (without version for easier updating)
     BUILD_NAME = f"{APP_NAME}"
 
