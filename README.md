@@ -1,3 +1,5 @@
+![IMAGE](https://repository-images.githubusercontent.com/1106017591/84e31759-4b2e-4bea-a1e0-33259330ea7d)
+
 # LiteSim: UFACTORY Lite 6 Simulator & Controller
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg?logo=python&logoColor=white)
