@@ -26,6 +26,9 @@ class SimXArmAPI:
         self.last_rpy = [180, 0, 0]
         
         self.real_arm = None
+
+    def _clamp(self, n, minn, maxn):
+        return max(min(maxn, n), minn)
     
     @property
     def is_connected(self):
@@ -159,21 +162,40 @@ class SimXArmAPI:
     def set_servo_angle(self, angle, speed=None, mvacc=None, is_radian=False, wait=True):
         self._check_controls()
         
-        if is_radian: target = [math.degrees(a) for a in angle]
-        else: target = [float(a) for a in angle]
-        target = normalize_angles(target)
+        if is_radian: 
+            target_deg = [math.degrees(a) for a in angle]
+        else: 
+            target_deg = [float(a) for a in angle]
+        
+        # Clamp values to safe values for bot
+        safe_target = []
+        for i, val in enumerate(target_deg):
+            if i < len(config.JOINT_LIMITS):
+                min_l, max_l = config.JOINT_LIMITS[i]
+                safe_val = self._clamp(val, min_l, max_l)
+                safe_target.append(safe_val)
+                
+                if safe_val != val:
+                    self._log(f"[WARN] Joint {i+1} limited: {val:.1f} -> {safe_val:.1f}")
+            else:
+                safe_target.append(val)
+        
+        final_target = safe_target 
+    
         if speed is None or speed <= 0: speed = 50 
 
         if self.real_arm:
-            self.real_arm.set_servo_angle(angle, speed=speed, mvacc=mvacc, is_radian=is_radian, wait=False)
+            self.real_arm.set_servo_angle(final_target, speed=speed, mvacc=mvacc, is_radian=False, wait=False)
 
-        max_diff = max([abs(t - c) for t, c in zip(target, self.joints_deg)])
+        max_diff = max([abs(t - c) for t, c in zip(final_target, self.joints_deg)])
         calc_duration = max_diff / float(speed)
         
-        if wait: self._interpolated_move(target, calc_duration)
+        if wait: 
+            self._interpolated_move(final_target, calc_duration)
         else:
-            self.joints_deg = target
+            self.joints_deg = final_target
             self._update_gui()
+            
         return 0
     
     def set_position(self, x=None, y=None, z=None, roll=None, pitch=None, yaw=None, speed=None, **kwargs):

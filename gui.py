@@ -219,7 +219,13 @@ class ControlPanel(tk.Tk):
                 
             for i, val in enumerate(latest_joints):
                 self.vars[i].set(val)
-                self.joint_labels[i].config(text=f"{val:.1f}")
+                
+                if hasattr(self, 'joint_entries') and i < len(self.joint_entries):
+                    ent = self.joint_entries[i]
+
+                    if self.focus_get() != ent:
+                        ent.delete(0, tk.END)
+                        ent.insert(0, f"{val:.1f}")
                 
         self.after(30, self._process_queues)
 
@@ -399,26 +405,37 @@ class ControlPanel(tk.Tk):
         self.btn_scan.pack(fill=tk.X)
 
         # 2. Sliders (Joints)
-        lf = ttk.LabelFrame(left_col, text="Manual Joint Control")
-        # Let op: we packen deze straks pas, zodat we eerst de Quit button kunnen plaatsen
+        lf = ttk.LabelFrame(left_col, text="Manual Joint Control", padding=10)
+        lf.pack(fill=tk.BOTH, expand=True, pady=5)
         
         self.vars = []
-        self.joint_labels = [] 
+        self.joint_entries = [] 
         
         for i in range(JOINT_COUNT):
             row = ttk.Frame(lf)
-            row.pack(fill=tk.X, pady=4)
+            row.pack(fill=tk.X, pady=2)
             
             header = ttk.Frame(row)
             header.pack(fill=tk.X)
-            ttk.Label(header, text=f"Joint {i+1}").pack(side=tk.LEFT)
-            lbl_val = ttk.Label(header, text="0.0", width=5, anchor="e")
-            lbl_val.pack(side=tk.RIGHT)
-            self.joint_labels.append(lbl_val)
             
+            ttk.Label(header, text=f"Joint {i+1}").pack(side=tk.LEFT)
+            
+            ent = ttk.Entry(header, width=6, justify="right")
+            ent.pack(side=tk.RIGHT)
+            ent.insert(0, "0.0")
+            
+            # Bind Enter and Lose focus to apply the angle
+            ent.bind("<Return>", lambda event, idx=i: self._on_entry_submit(idx))
+            ent.bind("<FocusOut>", lambda event, idx=i: self._on_entry_submit(idx))
+            
+            self.joint_entries.append(ent)
+
             v = tk.DoubleVar()
             self.vars.append(v)
-            s = ttk.Scale(row, from_=-180, to=180, variable=v, 
+
+            min_lim, max_lim = config.JOINT_LIMITS[i]
+            
+            s = ttk.Scale(row, from_=min_lim, to=max_lim, variable=v, 
                       command=lambda val, idx=i: self._slider_cb(idx, val))
             s.pack(fill=tk.X, pady=(0, 5))
 
@@ -645,7 +662,34 @@ class ControlPanel(tk.Tk):
             self.api.joints_deg = current 
             self.viz.update_joints(current)
             
-        self.joint_labels[idx].config(text=f"{float(val):.1f}")
+        ent = self.joint_entries[idx]
+        
+        if self.focus_get() != ent:
+            ent.delete(0, tk.END)
+            ent.insert(0, f"{float(val):.1f}")
+
+    def _on_entry_submit(self, idx):
+        ent = self.joint_entries[idx]
+        val_str = ent.get()
+        
+        try:
+            val = float(val_str)
+            
+            min_lim, max_lim = config.JOINT_LIMITS[idx]
+            safe_val = max(min(val, max_lim), min_lim)
+            self.vars[idx].set(safe_val)
+            self._slider_cb(idx, safe_val)
+            
+            if safe_val != val:
+                ent.delete(0, tk.END)
+                ent.insert(0, f"{safe_val:.1f}")
+                
+        except ValueError:
+            current_val = self.vars[idx].get()
+            ent.delete(0, tk.END)
+            ent.insert(0, f"{current_val:.1f}")
+            
+        self.focus_set()
 
     def _home(self):
         self.ctx.log_queue.put("[GUI] Going home...")

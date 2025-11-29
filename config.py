@@ -4,7 +4,7 @@ import os
 
 # --- APP INFO ---
 APP_NAME = "LiteSim"
-APP_VERSION = "1.9.8"
+APP_VERSION = "1.9.9"
 AUTHOR = "Dylan Kiesebrink"
 GITHUB_URL = "https://github.com/scoopy115/LiteSim"
 REPO_OWNER = "scoopy115"
@@ -13,6 +13,14 @@ PORTFOLIO_URL = "https://dylankiesebrink.nl"
 
 # --- ROBOT CONFIGURATION ---
 JOINT_COUNT = 6
+JOINT_LIMITS = [
+    (-360, 360), # J1: Base
+    (-150, 150),  # J2: Shoulder
+    (-35, 135), # J3: Elbow
+    (-360, 360), # J4: Wrist Roll
+    (-124, 124), # J5: Wrist Pitch
+    (-360, 360)  # J6: Wrist Roll
+]
 ROBOT_Z_OFFSET = 0.0
 SIM_SPEED_FACTOR = 1.0 
 ROBOT_SCAN_PORT = 30002
