@@ -34,19 +34,31 @@ Built with **PyVista** for 3D rendering and **sv_ttk** for a modern UI experienc
 LiteSim is developed and tested on modern hardware to ensure the best performance for 3D simulation.
 
 ### ✅ Officially Supported
-We provide pre-built executables (`.exe` / `.app`) and full support for:
+We provide pre-built executables (`.exe` / `.app`) for:
 * **Windows 10 / 11** (x64)
 * **macOS** (Apple Silicon)
 
-### ⚠️ Apple Intel Users
-We **do not** provide pre-built applications for Intel-based Macs.
-However, LiteSim is fully compatible with Intel Macs if run directly from the source code. Please set up a Conda or Python environment with the libraries found in `requirements.txt` and run `python main.py` to get started.
+### ⚠️ Intel Mac, Linux, and Running from source
+LiteSim is **fully compatible** with Intel-based Macs and Linux when running from source code. We simply do not provide pre-compiled executables for these platforms.
+However, LiteSim is compatible with these operating systems if run directly from the source code.
+1. Please set up a **Conda or Python environment** with the libraries found in `requirements.txt`
+2. **Run** `python main.py` to get started.
+
+### 🛡️ Windows Defender Warning
+When launching `LiteSim.exe`, Windows might show a blue pop-up saying **"Windows protected your PC"**.
+This happens because this is open-source software and does not have an expensive digital signature.
+
+**To start the application:**
+1. Click **"More info"** (under the text).
+2. Click the **"Run anyway"** button that appears.
+
+If you prefer not to run the `.exe`, you can always run the source code directly using Python (see instructions above).
 
 ---
 
 ## ❤️ Credits & Acknowledgment
 
-This project was created by me with extensive assistance from **Gemini 3 Pro** (Google AI). The AI served as a co-pilot for architecture, UI design (sv_ttk integration), and logic implementation.
+This project was created by me with extensive assistance from **Gemini 3 Pro** (Google AI). The AI served as a co-pilot for architecture, UI design, and logic implementation.
 
 * **SDK:** [xArm-Python-SDK](https://github.com/xArm-Developer/xArm-Python-SDK)
 * **Visualization:** [PyVista](https://docs.pyvista.org/)
