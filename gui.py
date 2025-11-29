@@ -478,14 +478,20 @@ class ControlPanel(tk.Tk):
         self.combo_stls = ttk.Combobox(ef_mid, state="readonly")
         self.combo_stls.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         self.combo_stls.bind("<<ComboboxSelected>>", self._on_stl_history_select)
-        ttk.Button(ef_mid, text="Load .stl file...", command=self._load_custom_gripper).pack(side=tk.LEFT, padx=5)
+        self.btn_load_stl = ttk.Button(ef_mid, text="Load Custom STL...", command=self._load_custom_gripper)
+        self.btn_load_stl.pack(side=tk.LEFT, padx=5)
 
         ef_bot = ttk.Frame(ef_frame)
         ef_bot.pack(fill=tk.X, pady=(5, 2))
         ttk.Label(ef_bot, text="Presets:").pack(side=tk.LEFT, padx=5)
-        ttk.Button(ef_bot, text="Default Gripper", command=self._load_std_gripper).pack(side=tk.LEFT, padx=2)
-        ttk.Button(ef_bot, text="Vacuum Gripper", command=self._load_vac_gripper).pack(side=tk.LEFT, padx=2)
-        ttk.Button(ef_bot, text="Remove Effector", command=self._remove_gripper).pack(side=tk.LEFT, padx=2)
+        self.btn_preset_std = ttk.Button(ef_bot, text="Default Gripper", command=self._load_std_gripper)
+        self.btn_preset_std.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        self.btn_preset_vac = ttk.Button(ef_bot, text="Vacuum Gripper", command=self._load_vac_gripper)
+        self.btn_preset_vac.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        self.btn_preset_remove = ttk.Button(ef_bot, text="Remove", command=self._remove_gripper)
+        self.btn_preset_remove.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
         # 2. Script Loading
         sf = ttk.LabelFrame(right_col, text="Script Loading")
@@ -788,7 +794,7 @@ class ControlPanel(tk.Tk):
         self.btn_run.config(state=inv_state) 
 
         config_state = tk.DISABLED if running else tk.NORMAL
-        
+        combo_state = "disabled" if running else "readonly"
         self.ent_ip.config(state=config_state) # IP field
         self.btn_load_script.config(state=config_state) # Script load button
         self.speed_scale.config(state=config_state) # Speed slider
@@ -798,9 +804,19 @@ class ControlPanel(tk.Tk):
         else:
             self.combo_history.config(state="readonly")
 
-        combo_state = "disabled" if running else "readonly"
         self.combo_history.config(state=combo_state)
         
+        if hasattr(self, 'combo_stls'):
+            self.combo_stls.config(state=combo_state)
+            
+        if hasattr(self, 'btn_load_stl'):
+            self.btn_load_stl.config(state=config_state)
+            
+        if hasattr(self, 'btn_preset_std'):
+            self.btn_preset_std.config(state=config_state)
+            self.btn_preset_vac.config(state=config_state)
+            self.btn_preset_remove.config(state=config_state)
+
         if hasattr(self, 'trace_combo'):
             self.trace_combo.config(state=combo_state)
             
@@ -909,6 +925,7 @@ class ControlPanel(tk.Tk):
                 success = self.viz.set_custom_gripper(path, scale_to_meters=do_scale)
                 if success:
                     self.ctx.log_queue.put(f"[GUI] Loaded from history: {os.path.basename(path)}")
+                    self._force_trace_mode("Effector Tip")
             finally:
                 self.rendering_paused = False
 
