@@ -147,8 +147,8 @@ class ControlPanel(tk.Tk):
         style.configure("Sub.TLabel", foreground="#bbbbbb") 
         style.configure("Link.TLabel", foreground="#4da6ff", font=base_font + ("underline",))
         
-        style.configure("Accent.TButton", font=("Helvetica", 14), padding=(10, 5))
-        style.configure("Small.Accent.TButton", font=("Helvetica", 9, "bold"), padding=(5, 0))
+        style.configure("Accent.TButton", font=("Segoe UI", 14), padding=(10, 5))
+        style.configure("Small.Accent.TButton", font=("Segoe UI", 9, "bold"), padding=(5, 0))
 
         self.colors = {
             "log_bg": "#1c1c1c", 

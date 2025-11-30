@@ -38,7 +38,7 @@ VSVersionInfo(
       StringTable(
         u'040904B0',
         [StringStruct(u'CompanyName', u'{AUTHOR}'),
-        StringStruct(u'FileDescription', u'{APP_NAME} | UFACTORY Lite 6 Simulator'),
+        StringStruct(u'FileDescription', u'{APP_NAME}'),
         StringStruct(u'FileVersion', u'{VERSION}'),
         StringStruct(u'InternalName', u'{APP_NAME}'),
         StringStruct(u'LegalCopyright', u'© {AUTHOR}.'),
