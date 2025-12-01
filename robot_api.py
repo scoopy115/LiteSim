@@ -2,7 +2,7 @@
 import time
 import math
 import sys
-import numpy
+import numpy as np
 
 try:
     from xarm.wrapper import XArmAPI as RealXArmAPI
@@ -63,7 +63,6 @@ class SimXArmAPI:
                 
         except Exception as e:
             self.real_arm = None
-            # Dit vangt nu ook "xxx" af (geeft een DNS of gaierror)
             return False, f"Connection Error: {e}"
 
     def disconnect_real_robot(self):
@@ -201,67 +200,95 @@ class SimXArmAPI:
     
     def set_position(self, x=None, y=None, z=None, roll=None, pitch=None, yaw=None, speed=None, silent=False, **kwargs):
         self._check_controls()
-        if self.chain is None: return -1
-
-        cur_x, cur_y, cur_z = self._get_current_fk_position()
+        
+        cur_x, cur_y, cur_z = self._get_current_fk_position() # In mm
+        
         if x is None: x = cur_x
         if y is None: y = cur_y
         if z is None: z = cur_z
         if roll is None: roll = self.last_rpy[0]
         if pitch is None: pitch = self.last_rpy[1]
         if yaw is None: yaw = self.last_rpy[2]
+        
         self.last_rpy = [roll, pitch, yaw]
 
         if not silent:
-            self._log(f"[MOVE] x={x:.0f} y={y:.0f} z={z:.0f}")
+            self._log(f"[MOVE] Line to: x={x:.0f} y={y:.0f} z={z:.0f}")
 
-        if self.real_arm:
+        wait = kwargs.get('wait', True)
+
+        if self.is_connected:
             self.real_arm.set_position(x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw, 
-                                       speed=speed, wait=False, **kwargs)
+                                       speed=speed, wait=wait, **kwargs)
+            
+        else:
+            if self.chain is None: return -1
+            
+            start_pos = np.array([cur_x, cur_y, cur_z]) / 1000.0
+            end_pos = np.array([x, y, z]) / 1000.0
+            
+            dist = np.linalg.norm(end_pos - start_pos)
+            
+            steps = int(dist / 0.005) 
+            if steps < 5: steps = 5 
+            
+            if speed is None or speed <= 0: speed = 100
+            duration = dist * 1000 / float(speed) # sec
+            if duration < 0.1: duration = 0.1
+            dt = duration / steps
 
-        current_rads = [0] + [math.radians(j) for j in self.joints_deg] + [0]
-        if len(current_rads) < len(self.chain.links):
-            current_rads += [0] * (len(self.chain.links) - len(current_rads))
+            xs = np.linspace(start_pos[0], end_pos[0], steps)
+            ys = np.linspace(start_pos[1], end_pos[1], steps)
+            zs = np.linspace(start_pos[2], end_pos[2], steps)
+            
+            target_orient = rpy_to_matrix(roll, pitch, yaw)
+            
+            current_rads_full = [0] + [math.radians(j) for j in self.joints_deg] + [0]
+            if len(current_rads_full) < len(self.chain.links):
+                current_rads_full += [0] * (len(self.chain.links) - len(current_rads_full))
+            
+            if not wait:
+                final_joints = self._solve_ik(end_pos, target_orient, current_rads_full)
+                if final_joints:
+                    self.joints_deg = final_joints
+                    self._update_gui()
+            else:
+                for i in range(steps):
+                    self._check_controls()
+                    
+                    waypoint = [xs[i], ys[i], zs[i]]
+                    
+                    new_joints = self._solve_ik(waypoint, target_orient, current_rads_full)
+                    
+                    if new_joints:
+                        self.joints_deg = new_joints
+                        self._update_gui()
+                        
+                        current_rads_full = [0] + [math.radians(j) for j in new_joints] + [0]
+                        if len(current_rads_full) < len(self.chain.links):
+                            current_rads_full += [0] * (len(self.chain.links) - len(current_rads_full))
 
-        target_pos = [x/1000.0, y/1000.0, z/1000.0]
-        target_orient = rpy_to_matrix(roll, pitch, yaw)
+                    time.sleep(dt)
+                    
+        return 0
 
+    def _solve_ik(self, target_pos, target_orient, initial_rads):
         try:
             real_joints = self.chain.inverse_kinematics(
                 target_position=target_pos,
                 target_orientation=target_orient, 
                 orientation_mode="all",
-                initial_position=current_rads[:len(self.chain.links)]
+                initial_position=initial_rads[:len(self.chain.links)]
             )
             
-            if hasattr(real_joints, 'any') and numpy.isnan(real_joints).any():
-                     # self._log("[IK] Calculation failed (out of reach)")
-                     return 1
+            if hasattr(real_joints, 'any') and np.isnan(real_joints).any():
+                return None
 
             new_degrees = []
             for i in range(1, 7):
                 if i < len(real_joints): new_degrees.append(math.degrees(real_joints[i]))
                 else: new_degrees.append(0.0)
-            new_degrees = normalize_angles(new_degrees)
             
-            if speed is None: speed = 100 
-            dist = math.sqrt((x - cur_x)**2 + (y - cur_y)**2 + (z - cur_z)**2)
-            estimated_duration = dist / float(speed)
-            if estimated_duration < 0.1: estimated_duration = 0.2
-
-            wait = kwargs.get('wait', True)
-            if wait:
-                self._interpolated_move(new_degrees, estimated_duration)
-            else:
-                self.joints_deg = new_degrees
-                self._update_gui()
-
-        except Exception as e:
-                err_msg = str(e)
-                if "outside of provided bounds" in err_msg or "initial guess" in err_msg.lower():
-                    self._log("[CRITICAL] IK Solver got stuck (Singularity). Please return Home.")
-                    return -2
-                
-                self._log(f"[IK ERROR] {e}")
-                return 1
-        return 0
+            return normalize_angles(new_degrees)
+        except:
+            return None

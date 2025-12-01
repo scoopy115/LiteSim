@@ -4,7 +4,7 @@ import os
 
 # --- APP INFO ---
 APP_NAME = "LiteSim"
-APP_VERSION = "1.10.1"
+APP_VERSION = "1.10.2"
 AUTHOR = "Dylan Kiesebrink"
 GITHUB_URL = "https://github.com/scoopy115/LiteSim"
 REPO_OWNER = "scoopy115"
