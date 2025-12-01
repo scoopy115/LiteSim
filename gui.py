@@ -14,6 +14,9 @@ import config
 import sv_ttk
 import platform
 import json
+import time
+import math
+import numpy as np
 import zipfile
 import subprocess
 from pathlib import Path
@@ -21,7 +24,7 @@ from urllib.request import urlretrieve, urlopen
 from visualizer import RobotVisualizer
 from robot_api import SimXArmAPI
 from config import GLOBAL_API_INSTANCE, JOINT_COUNT, HISTORY_FILE, STL_HISTORY_FILE, ROBOT_SCAN_PORT, GITHUB_URL, PORTFOLIO_URL
-from utils import QueueRedirector
+from utils import QueueRedirector, rpy_to_matrix
 
 # --- GUI CONTEXT ---
 class AppContext:
@@ -51,12 +54,12 @@ class ControlPanel(tk.Tk):
         self.title(f"{config.APP_NAME} {config.APP_VERSION} | UFACTORY Lite 6 Simulator | Controls")
         screen_w = self.winfo_screenwidth()
         screen_h = self.winfo_screenheight()
-        ctrl_w = 800 
+        ctrl_w = 1000 
         
         request_h = (screen_h * 2) // 3 # Screen height = 2/3th of vertical space
         self.geometry(f"{ctrl_w}x{request_h}+0+0")
         
-        self.minsize(800, 800)
+        self.minsize(1000, 800)
 
         self.ctx = AppContext()
         self.data_lock = threading.Lock()
@@ -85,7 +88,11 @@ class ControlPanel(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.color_vars = {}
         self.was_colliding = False
-        
+        self.is_handling_crash = False
+        self.xyz_entries = []
+        self.drag_data = {"x": 0, "val": 0.0, "axis": None}
+        self.last_drag_time = 0
+        self.xyz_busy = False        
         self.rendering_paused = False
 
         self._start_update_check()
@@ -97,6 +104,7 @@ class ControlPanel(tk.Tk):
         self._process_queues()
 
         self._apply_modern_theme()
+        self._update_calculated_fields([0.0] * config.JOINT_COUNT)
 
     def _load_history(self):
         self.script_history = []
@@ -157,6 +165,8 @@ class ControlPanel(tk.Tk):
         }
 
     def _update_3d_loop(self):
+        if self.is_handling_crash:
+            return
         if self.rendering_paused:
             self.after(500, self._update_3d_loop)
             return
@@ -185,15 +195,13 @@ class ControlPanel(tk.Tk):
 
         except Exception: pass
         
-        # 4. Plan volgende frame
         self.after(40, self._update_3d_loop)
-        
-
 
     # Collision handler
     def _handle_collision(self):
         self.ctx.stop_flag = True
         self.rendering_paused = True
+        self.is_handling_crash = True
         self.btn_run.config(state=tk.NORMAL)
         
         self.ctx.log_queue.put("[ALERT] COLLISION DETECTED! Robot hit the floor.")
@@ -203,8 +211,11 @@ class ControlPanel(tk.Tk):
             "The robot arm or end-effector hit the floor!\n\nThe simulation has been paused.\nClick OK to reset the robot to Home position."
         )
         
+        self.ctx.stop_flag = False 
+        self.ctx.paused = False
         self._stop_script()
         self._home()
+        
         for target, var in self.color_vars.items():
             if target in ["arm", "wrist", "eef"]:
                 self._apply_color(target, var.get())
@@ -213,6 +224,7 @@ class ControlPanel(tk.Tk):
 
     def _resume_from_crash(self):
         self.rendering_paused = False
+        self.is_handling_crash = False
         self._update_3d_loop()
 
     def _process_queues(self):
@@ -241,6 +253,8 @@ class ControlPanel(tk.Tk):
                     if self.focus_get() != ent:
                         ent.delete(0, tk.END)
                         ent.insert(0, f"{val:.1f}")
+
+            self._update_calculated_fields(latest_joints)
                 
         self.after(30, self._process_queues)
 
@@ -422,6 +436,33 @@ class ControlPanel(tk.Tk):
         # 2. Sliders (Joints)
         lf = ttk.LabelFrame(left_col, text="Manual Joint Control", padding=10)
         lf.pack(fill=tk.BOTH, expand=True, pady=5)
+
+        xyz_frame = ttk.LabelFrame(left_col, text="Cartesian Control", padding=10)
+        xyz_frame.pack(fill=tk.X, pady=5)
+        
+        xyz_frame.columnconfigure(0, weight=1)
+        xyz_frame.columnconfigure(1, weight=1)
+        xyz_frame.columnconfigure(2, weight=1)
+        
+        axes = ["X", "Y", "Z"]
+        self.xyz_entries = []
+        
+        for i, axis in enumerate(axes):
+            col = ttk.Frame(xyz_frame)
+            col.grid(row=0, column=i, sticky="ew", padx=5)
+            
+            # Label
+            lbl = ttk.Label(col, text=f"{axis}:", font=("Segoe UI", 9, "bold"))
+            lbl.pack(anchor="w")
+            self._bind_drag_behavior(lbl, i)
+            
+            # Entry
+            ent = ttk.Entry(col)
+            ent.pack(fill=tk.X)
+            ent.insert(0, "0.0")
+            ent.bind("<Return>", self._on_xyz_submit)
+            ent.bind("<FocusOut>", self._on_xyz_submit)
+            self.xyz_entries.append(ent)
         
         self.vars = []
         self.joint_entries = [] 
@@ -713,6 +754,8 @@ class ControlPanel(tk.Tk):
             ent.delete(0, tk.END)
             ent.insert(0, f"{float(val):.1f}")
 
+        self._update_calculated_fields(current)
+
     def _on_entry_submit(self, idx):
         ent = self.joint_entries[idx]
         val_str = ent.get()
@@ -826,6 +869,10 @@ class ControlPanel(tk.Tk):
         if hasattr(self, 'chk_ghost'):
             self.chk_ghost.config(state=config_state)
 
+        if hasattr(self, 'xyz_entries'):
+            for ent in self.xyz_entries: 
+                ent.config(state=config_state)
+
     def _toggle_pause(self):
         if self.ctx.paused:
             self.ctx.paused = False
@@ -857,14 +904,25 @@ class ControlPanel(tk.Tk):
         threading.Thread(target=self._run_script_thread, args=(self.current_script_path,), daemon=True).start()
 
     def _on_script_finished(self):
-        self._toggle_controls(False)
-        if self.ctx.stop_flag:
-            self.ctx.log_queue.put("[LOOP] Stopped by user.")
-            self._home()
+        if self.is_handling_crash:
             return
+        self._toggle_controls(False)
+        
+        was_stopped_manually = self.ctx.stop_flag
+        
+        self.ctx.stop_flag = False 
+
+        if was_stopped_manually:
+            self.ctx.log_queue.put("[LOOP] Script stopped by user.")
+            
+            self._home() 
+            return
+
         if self.loop_var.get():
             self.ctx.log_queue.put("[LOOP] Looping...")
-            self.after(0, self._run_current_script)
+            self.after(500, self._run_current_script)
+        else:
+            self.ctx.log_queue.put("[SCRIPT] Finished.")
 
     def _apply_color(self, target, color_str):
         success = self.viz.set_color(target, color_str)
@@ -1327,6 +1385,110 @@ class ControlPanel(tk.Tk):
                     
         except Exception as e:
             messagebox.showerror("Extraction Error", f"Downloaded but failed to extract:\n{e}")
+
+    def _bind_drag_behavior(self, label_widget, entry_index):
+        def on_enter(e):
+            if str(self.btn_run['state']) == 'normal': 
+                label_widget.config(cursor="sb_h_double_arrow")
+        
+        label_widget.bind("<Enter>", on_enter)
+        label_widget.bind("<Leave>", lambda e: label_widget.config(cursor=""))
+        label_widget.bind("<Button-1>", lambda e: self._start_drag(e, entry_index))
+        label_widget.bind("<B1-Motion>", lambda e: self._do_drag(e, entry_index))
+        label_widget.bind("<ButtonRelease-1>", self._on_drag_stop)
+
+    def _start_drag(self, event, idx):
+        if self.btn_run['state'] == tk.DISABLED: return
+        try:
+            current_val = float(self.xyz_entries[idx].get())
+            self.drag_data = {"x": event.x_root, "val": current_val, "axis": idx}
+        except: 
+            self.drag_data = {"x": 0, "val": 0.0, "axis": None}
+
+    def _do_drag(self, event, idx):
+        if self.btn_run['state'] == tk.DISABLED: return
+        
+        if time.time() - self.last_drag_time < 0.05: return
+        self.last_drag_time = time.time()
+        
+        delta = event.x_root - self.drag_data["x"]
+        new_val = self.drag_data["val"] + delta # 1 pixel = 1 mm
+        
+        ent = self.xyz_entries[idx]
+        ent.delete(0, tk.END)
+        ent.insert(0, f"{new_val:.1f}")
+
+        if self.api.is_connected:
+            pass
+        else:
+            self._on_xyz_submit(skip_safety=True)
+
+    def _on_drag_stop(self, event):
+        if self.api.is_connected:
+            print("[GUI] Drag finished. Sending final position to Real Robot.")
+            self._on_xyz_submit(skip_safety=False)
+
+    def _on_xyz_submit(self, event=None, skip_safety=False):
+        if self.xyz_busy: return
+        self.xyz_busy = True
+        
+        try:
+            if self.btn_run['state'] == tk.DISABLED: return
+
+            try:
+                x_mm = float(self.xyz_entries[0].get())
+                y_mm = float(self.xyz_entries[1].get())
+                z_mm = float(self.xyz_entries[2].get())
+            except ValueError: return 
+
+            self.api.set_position(
+                x=x_mm, y=y_mm, z=z_mm,
+                speed=100,
+                wait=False,
+                silent=True
+            )
+            
+        except Exception: 
+            pass
+        finally:
+            self.xyz_busy = False
+
+    def _update_calculated_fields(self, joints_list):
+        try:
+            chain = self.api.chain
+            if not chain: return
+
+            rads = [0] + [math.radians(j) for j in joints_list] + [0]
+            
+            if len(rads) < len(chain.links):
+                rads += [0] * (len(chain.links) - len(rads))
+            
+            matrix = chain.forward_kinematics(rads[:len(chain.links)])
+            
+            coords_mm = [
+                matrix[0, 3] * 1000.0,
+                matrix[1, 3] * 1000.0,
+                (matrix[2, 3] + config.ROBOT_Z_OFFSET) * 1000.0
+            ]
+            
+            controls_disabled = (str(self.btn_run['state']) == 'disabled')
+
+            for i, val in enumerate(coords_mm):
+                if i < len(self.xyz_entries):
+                    ent = self.xyz_entries[i]
+                    
+                    if self.focus_get() != ent:
+                        if controls_disabled:
+                            ent.config(state='normal')
+                            ent.delete(0, tk.END)
+                            ent.insert(0, f"{val:.1f}")
+                            ent.config(state='disabled')
+                        else:
+                            ent.delete(0, tk.END)
+                            ent.insert(0, f"{val:.1f}")
+        except Exception: 
+            pass
+        
 if __name__ == "__main__":
     app = ControlPanel()
     app.mainloop()

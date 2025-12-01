@@ -2,6 +2,7 @@
 import time
 import math
 import sys
+import numpy
 
 try:
     from xarm.wrapper import XArmAPI as RealXArmAPI
@@ -198,7 +199,7 @@ class SimXArmAPI:
             
         return 0
     
-    def set_position(self, x=None, y=None, z=None, roll=None, pitch=None, yaw=None, speed=None, **kwargs):
+    def set_position(self, x=None, y=None, z=None, roll=None, pitch=None, yaw=None, speed=None, silent=False, **kwargs):
         self._check_controls()
         if self.chain is None: return -1
 
@@ -211,7 +212,8 @@ class SimXArmAPI:
         if yaw is None: yaw = self.last_rpy[2]
         self.last_rpy = [roll, pitch, yaw]
 
-        self._log(f"[MOVE] x={x:.0f} y={y:.0f} z={z:.0f}")
+        if not silent:
+            self._log(f"[MOVE] x={x:.0f} y={y:.0f} z={z:.0f}")
 
         if self.real_arm:
             self.real_arm.set_position(x=x, y=y, z=z, roll=roll, pitch=pitch, yaw=yaw, 
@@ -232,6 +234,10 @@ class SimXArmAPI:
                 initial_position=current_rads[:len(self.chain.links)]
             )
             
+            if hasattr(real_joints, 'any') and numpy.isnan(real_joints).any():
+                     # self._log("[IK] Calculation failed (out of reach)")
+                     return 1
+
             new_degrees = []
             for i in range(1, 7):
                 if i < len(real_joints): new_degrees.append(math.degrees(real_joints[i]))
@@ -251,6 +257,11 @@ class SimXArmAPI:
                 self._update_gui()
 
         except Exception as e:
-            self._log(f"[IK ERROR] {e}")
-            return 1
+                err_msg = str(e)
+                if "outside of provided bounds" in err_msg or "initial guess" in err_msg.lower():
+                    self._log("[CRITICAL] IK Solver got stuck (Singularity). Please return Home.")
+                    return -2
+                
+                self._log(f"[IK ERROR] {e}")
+                return 1
         return 0
