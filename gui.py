@@ -145,10 +145,10 @@ class ControlPanel(tk.Tk):
         
         style.configure("Title.TLabel", font=("Segoe UI", 20, "bold") if sys.platform == "win32" else ("Helvetica", 20, "bold"))
         style.configure("Sub.TLabel", foreground="#bbbbbb") 
-        style.configure("Link.TLabel", foreground="#4da6ff", font=base_font + ("underline",))
+        style.configure("Link.TLabel", foreground=config.COLOR_PATH, font=base_font + ("underline",))
         
-        style.configure("Accent.TButton", font=("Segoe UI", 14), padding=(10, 5))
-        style.configure("Small.Accent.TButton", font=("Segoe UI", 9, "bold"), padding=(5, 0))
+        style.configure("Accent.TButton", font=("Segoe UI", 14))
+        style.configure("Small.Accent.TButton", font=("Segoe UI", 10), padding=(5, 0))
 
         self.colors = {
             "log_bg": "#1c1c1c", 
@@ -1075,47 +1075,68 @@ class ControlPanel(tk.Tk):
 
     def _update_thread(self):
         try:
-            url = f"https://api.github.com/repos/{config.REPO_OWNER}/{config.REPO_NAME}/releases/latest"
+            url = f"https://api.github.com/repos/{config.REPO_OWNER}/{config.REPO_NAME}/releases"
             
-            with urlopen(url, timeout=3) as response:
-                data = json.loads(response.read().decode())
+            with urlopen(url, timeout=5) as response:
+                releases = json.loads(response.read().decode())
+                if not releases: return
+
+                latest_release = releases[0]
+                latest_tag = latest_release.get("tag_name", "").lstrip("v")
                 
-                latest_tag = data.get("tag_name", "").lstrip("v")
-                assets = data.get("assets", [])
-                
-                # Check if GitHub release is newer than current app
                 if self._is_version_newer(latest_tag, config.APP_VERSION):
-                    system = platform.system().lower() 
                     
+                    combined_notes = ""
+                    for release in releases:
+                        tag = release.get("tag_name", "").lstrip("v")
+                        if self._is_version_newer(tag, config.APP_VERSION):
+                            title = release.get("name") or f"Version {tag}"
+                            body = release.get("body", "No description.")
+                            combined_notes += f"# {title}\n{body}\n\n***\n\n"
+                        else: break
+
+                    assets = latest_release.get("assets", [])
+                    html_url = latest_release.get("html_url", "")
+                    
+                    system = platform.system().lower()
+                    
+                    target_keyword = ""
+                    if "darwin" in system: 
+                        target_keyword = "macos"
+                    elif "win" in system:
+                        target_keyword = "windows"
+                    else:
+                        return 
+
                     download_url = None
                     asset_name = ""
-                    
-                    search_term = ""
-                    if "windows" in system:
-                        search_term = "windows"
-                    elif "darwin" in system:
-                        search_term = "macos"
-                    else:
-                        return # Linux: Nothing
-                    
-                    # Search for match for OS
+
                     for asset in assets:
                         name = asset["name"].lower()
-                        if search_term in name and name.endswith(".zip"):
+                        
+                        if not name.endswith(".zip"): 
+                            continue
+                        
+                        if target_keyword in name:
                             download_url = asset["browser_download_url"]
                             asset_name = asset["name"]
-                            break
+                            break 
                     
+                    # Save data
+                    self.pending_update_data = {
+                        "version": latest_tag,
+                        "url": download_url,
+                        "name": asset_name,
+                        "notes": combined_notes,
+                        "html_url": html_url
+                    }
+
                     if download_url:
-                        self.pending_update_data = {
-                            "version": latest_tag,
-                            "url": download_url,
-                            "name": asset_name
-                        }
-                        self.after(0, lambda: self._show_update_dialog(latest_tag, download_url, asset_name))
+                        self.after(0, lambda: self.btn_update_available.pack(side=tk.LEFT, padx=(10, 0)))
+                        self.after(0, lambda: self._show_custom_update_dialog())
 
         except Exception as e:
-            pass 
+            pass
     
     def _is_version_newer(self, latest, current):
         try:
@@ -1124,23 +1145,112 @@ class ControlPanel(tk.Tk):
             return l_parts > c_parts
         except: return False
 
-    def _show_update_dialog(self, version, download_url, asset_name):
-        msg = f"A new version of LiteSim is available: {version}\n\n"
-        # msg += f"Detected Platform: {platform.system()}\n"
-        # msg += f"File found: {asset_name}\n\n"
-        msg += "Do you want to download this update?"
+    def _show_custom_update_dialog(self):
+        if not self.pending_update_data: return
         
-        if messagebox.askyesno("Update Available", msg):
-            self._start_download(download_url, asset_name)
+        data = self.pending_update_data
+        version = data["version"]
+        notes = data["notes"]
+        has_download = data["url"] is not None
+        
+        pop = tk.Toplevel(self)
+        pop.title("New Update Available")
+        pop.geometry("650x500")
+        pop.resizable(False, False)
+        pop.transient(self)
+        pop.grab_set()
+        
+        header = ttk.Frame(pop, padding=20)
+        header.pack(fill=tk.X)
+        
+        ttk.Label(header, text=f"Version {version} is available!", font=("Segoe UI", 16, "bold")).pack(anchor="w")
+        
+        if has_download:
+            pass
+            #ttk.Label(header, text=f"Download ready for OS: {platform.system()}", foreground="#4da6ff").pack(anchor="w", pady=(2,0))
         else:
-            self.btn_update_available.pack(side=tk.LEFT, padx=(10, 0))
+            ttk.Label(header, text="No download found for your OS.", foreground="#ff5555").pack(anchor="w", pady=(2,0))
+
+        lbl_frame = ttk.LabelFrame(pop, text="Release Notes", padding=10)
+        lbl_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
+        
+        txt = scrolledtext.ScrolledText(lbl_frame, font=("Segoe UI", 14), height=10, 
+                                        bg="#2b2b2b", fg="#e0e0e0", borderwidth=0, padx=10, pady=10)
+        txt.pack(fill=tk.BOTH, expand=True)
+
+        def render_markdown_text(widget, markdown_text):
+            widget.tag_config("h1", font=("Segoe UI", 16, "bold"), foreground=config.COLOR_BASE, spacing1=10, spacing3=5)
+            widget.tag_config("h2", font=("Segoe UI", 16, "bold"), foreground=config.COLOR_BASE, spacing1=10, spacing3=5)
+            widget.tag_config("h3", font=("Segoe UI", 16, "bold"), foreground=config.COLOR_PATH, spacing1=8, spacing3=2)
+            widget.tag_config("body", font=("Segoe UI", 14), spacing1=2, spacing3=2)
+            widget.tag_config("list", lmargin1=20, lmargin2=20, spacing1=2)
+            widget.tag_config("bold", font=("Segoe UI", 14, "bold"), foreground=config.COLOR_BASE)
+            widget.tag_config("separator", foreground="#555555", lmargin2=20)
+
+            def insert_processed_line(text, base_tag):
+                parts = text.split('**')
+                
+                for i, part in enumerate(parts):
+                    if not part: continue
+                    
+                    tags = [base_tag]
+                    
+                    if i % 2 == 1:
+                        tags.append("bold")
+                    
+                    widget.insert(tk.END, part, tuple(tags))
+                
+                widget.insert(tk.END, "\n")
+
+            lines = markdown_text.split('\n')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    widget.insert(tk.END, "\n")
+                    continue
+                
+                if line.startswith("# "):
+                    widget.insert(tk.END, line[2:] + "\n", "h1")
+                elif line.startswith("## "):
+                    widget.insert(tk.END, line[3:] + "\n", "h2")
+                elif line.startswith("### "):
+                    widget.insert(tk.END, line[4:] + "\n", "h3")
+                elif line.startswith("***") or line.startswith("---"):
+                    widget.insert(tk.END, "_" * 60 + "\n", "separator")
+                
+                elif line.startswith("* ") or line.startswith("- "):
+                    widget.insert(tk.END, "•  ", "list")
+                    content = line[2:]
+                    insert_processed_line(content, "list")
+                
+                else:
+                    insert_processed_line(line, "body")
+
+        render_markdown_text(txt, notes)
+        txt.config(state=tk.DISABLED)
+
+        btn_frame = ttk.Frame(pop, padding=20)
+        btn_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        def on_cancel():
+            pop.destroy()
+            
+        ttk.Button(btn_frame, text="Remind Me Later", command=on_cancel).pack(side=tk.RIGHT)
+        
+        def on_confirm():
+            pop.destroy()
+            if has_download:
+                self._start_download(data["url"], data["name"])
+            else:
+                webbrowser.open(data["html_url"])
+
+        action_text = "Download & Install" if has_download else "Open GitHub Page"
+        btn_action = ttk.Button(btn_frame, text=action_text, style="Accent.TButton", command=on_confirm)
+        btn_action.pack(side=tk.RIGHT, padx=10)
 
     def _on_update_click(self):
         if self.pending_update_data:
-            self.btn_update_available.pack_forget()
-            
-            d = self.pending_update_data
-            self._show_update_dialog(d["version"], d["url"], d["name"])
+            self._show_custom_update_dialog()
 
     def _start_download(self, url, filename):
         self.dl_win = tk.Toplevel(self)
