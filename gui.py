@@ -140,15 +140,15 @@ class ControlPanel(tk.Tk):
         sv_ttk.set_theme("dark")
         style = ttk.Style()
 
-        base_font = ("Segoe UI", 10) if sys.platform == "win32" else ("Helvetica", 12)
+        base_font = ("Arial", 10)
         style.configure(".", font=base_font)
         
-        style.configure("Title.TLabel", font=("Segoe UI", 20, "bold") if sys.platform == "win32" else ("Helvetica", 20, "bold"))
+        style.configure("Title.TLabel", font=("Arial", 20, "bold"))
         style.configure("Sub.TLabel", foreground="#bbbbbb") 
         style.configure("Link.TLabel", foreground=config.COLOR_PATH, font=base_font + ("underline",))
-        
-        style.configure("Accent.TButton", font=("Segoe UI", 14))
-        style.configure("Small.Accent.TButton", font=("Segoe UI", 10), padding=(5, 0))
+        style.configure("TButton", font=("Arial", 10))
+        style.configure("Accent.TButton", font=("Arial", 10))
+        style.configure("Small.Accent.TButton", font=("Arial", 10), padding=(5, 0))
 
         self.colors = {
             "log_bg": "#1c1c1c", 
@@ -335,7 +335,7 @@ class ControlPanel(tk.Tk):
         lbl_title = ttk.Label(
             title_row, 
             text=f"{config.APP_NAME} {config.APP_VERSION}", 
-            font=("Helvetica", 20, "bold")
+            font=("Arial", 20, "bold")
         )
         lbl_title.pack(side=tk.LEFT)
 
@@ -351,7 +351,7 @@ class ControlPanel(tk.Tk):
         lbl_credits = ttk.Label(
             text_container, 
             text="Made with ♡ by Gemini 3 Pro & Dylan Kiesebrink", 
-            font=("Helvetica", 10),
+            font=("Arial", 10),
             foreground="#888888"
         )
         lbl_credits.pack(anchor="w")
@@ -364,7 +364,7 @@ class ControlPanel(tk.Tk):
         lbl_github = ttk.Label(
             header_right, 
             text="View on GitHub ↗", 
-            font=("Helvetica", 10, "underline"), 
+            font=("Arial", 10, "underline"), 
             foreground="#ff5015",
             cursor="hand2"
         )
@@ -375,7 +375,7 @@ class ControlPanel(tk.Tk):
         lbl_portfolio = ttk.Label(
             header_right, 
             text="Visit Portfolio ↗", 
-            font=("Helvetica", 10, "underline"), 
+            font=("Arial", 10, "underline"), 
             foreground="#ff5015",
             cursor="hand2"
         )
@@ -1163,7 +1163,7 @@ class ControlPanel(tk.Tk):
         header = ttk.Frame(pop, padding=20)
         header.pack(fill=tk.X)
         
-        ttk.Label(header, text=f"Version {version} is available!", font=("Segoe UI", 16, "bold")).pack(anchor="w")
+        ttk.Label(header, text=f"Version {version} is available!", font=("Arial", 16, "bold")).pack(anchor="w")
         
         if has_download:
             pass
@@ -1174,17 +1174,17 @@ class ControlPanel(tk.Tk):
         lbl_frame = ttk.LabelFrame(pop, text="Release Notes", padding=10)
         lbl_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
         
-        txt = scrolledtext.ScrolledText(lbl_frame, font=("Segoe UI", 14), height=10, 
+        txt = scrolledtext.ScrolledText(lbl_frame, font=("Arial", 10), height=10, 
                                         bg="#2b2b2b", fg="#e0e0e0", borderwidth=0, padx=10, pady=10)
         txt.pack(fill=tk.BOTH, expand=True)
 
         def render_markdown_text(widget, markdown_text):
-            widget.tag_config("h1", font=("Segoe UI", 16, "bold"), foreground=config.COLOR_BASE, spacing1=10, spacing3=5)
-            widget.tag_config("h2", font=("Segoe UI", 16, "bold"), foreground=config.COLOR_BASE, spacing1=10, spacing3=5)
-            widget.tag_config("h3", font=("Segoe UI", 16, "bold"), foreground=config.COLOR_PATH, spacing1=8, spacing3=2)
-            widget.tag_config("body", font=("Segoe UI", 14), spacing1=2, spacing3=2)
+            widget.tag_config("h1", font=("Arial", 16, "bold"), foreground=config.COLOR_BASE, spacing1=10, spacing3=5)
+            widget.tag_config("h2", font=("Arial", 14, "bold"), foreground=config.COLOR_BASE, spacing1=10, spacing3=5)
+            widget.tag_config("h3", font=("Arial", 12, "bold"), foreground=config.COLOR_PATH, spacing1=8, spacing3=2)
+            widget.tag_config("body", font=("Arial", 10), spacing1=2, spacing3=2)
             widget.tag_config("list", lmargin1=20, lmargin2=20, spacing1=2)
-            widget.tag_config("bold", font=("Segoe UI", 14, "bold"), foreground=config.COLOR_BASE)
+            widget.tag_config("bold", font=("Arial", 10, "bold"), foreground=config.COLOR_BASE)
             widget.tag_config("separator", foreground="#555555", lmargin2=20)
 
             def insert_processed_line(text, base_tag):
