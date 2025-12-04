@@ -41,6 +41,18 @@ class SimXArmAPI:
         return False
 
     def connect_real_robot(self, ip):
+        if ip.lower() in ["debug"]:
+            self._log(f"[MOCK] Starting Virtual Connection...")
+            self.real_arm = MockXArmAPI(ip)
+            
+            self.joints_deg = list(self.real_arm._joints)
+            self._update_gui()
+            self.last_rpy = self.real_arm._position[3:]
+            self.real_xyz = self.real_arm._position[:3]
+            
+            self._start_monitoring()
+            return True, "Connected to MOCK"
+        
         if not HAS_REAL_SDK: return False, "SDK Missing"
         if not ip or "xxx" in ip: return False, "Invalid IP"
 
@@ -368,3 +380,50 @@ class SimXArmAPI:
         self.joints_deg = [0.0] * 6
         self._update_gui()
         if self.is_connected: self.real_arm.set_servo_angle([0]*6, speed=30, wait=False)
+
+    # Mock robot for testing without Lite 6
+class MockXArmAPI:
+    def __init__(self, ip):
+        print(f"[MOCK] Initializing Fake Robot at {ip}")
+        self.connected = True
+        self.has_error = False
+        self.has_warn = False
+        
+        self._joints = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self._position = [200.0, 0.0, 150.0, 180.0, 0.0, 0.0] # XYZ RPY
+
+    def motion_enable(self, enable=True): return 0
+    def set_mode(self, mode): return 0
+    def set_state(self, state): return 0
+    def clean_warn(self): return 0
+    def clean_error(self): return 0
+    
+    def disconnect(self):
+        self.connected = False
+        print("[MOCK] Disconnected.")
+
+    def get_err_warn_code(self):
+        return 0, [0, 0]
+
+    def get_servo_angle(self, is_radian=False):
+        return 0, list(self._joints)
+
+    def get_position(self, is_radian=False):
+        return 0, list(self._position)
+
+    def set_servo_angle(self, angle, speed=None, mvacc=None, is_radian=False, wait=False, **kwargs):
+        self._joints = list(angle)
+        
+        if wait: time.sleep(0.1)
+        return 0
+
+    def set_position(self, x=None, y=None, z=None, roll=None, pitch=None, yaw=None, is_radian=False, wait=False, **kwargs):
+        if x is not None: self._position[0] = x
+        if y is not None: self._position[1] = y
+        if z is not None: self._position[2] = z
+        if roll is not None: self._position[3] = roll
+        if pitch is not None: self._position[4] = pitch
+        if yaw is not None: self._position[5] = yaw
+        
+        if wait: time.sleep(0.1)
+        return 0

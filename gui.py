@@ -1033,10 +1033,11 @@ class ControlPanel(tk.Tk):
             self._set_manual_controls_state(False)
             ip = self.ent_ip.get().strip()
             
-            allowed = set("0123456789.")
-            if not ip or not set(ip).issubset(allowed):
-                messagebox.showwarning("Invalid IP", "IP Address contains invalid characters.\nOnly numbers (0-9) and dots (.) are allowed.")
-                return
+            if ip.lower() not in ["debug"]:
+                allowed = set("0123456789.")
+                if not ip or not set(ip).issubset(allowed):
+                    messagebox.showwarning("Invalid IP", "IP Address contains invalid characters.\nOnly numbers (0-9) and dots (.) are allowed.")
+                    return
 
             self.btn_connect.config(state=tk.DISABLED, text="Connecting...")
             self.ent_ip.config(state=tk.DISABLED)
