@@ -515,10 +515,6 @@ class ControlPanel(tk.Tk):
         
         lf.pack(fill=tk.BOTH, expand=True, pady=5)
 
-        ttk.Button(left_col, text="Quit to Desktop", command=self._on_close).pack(side=tk.BOTTOM, fill=tk.X, pady=10)
-
-        lf.pack(fill=tk.BOTH, expand=True, pady=5)
-
         # RIGHT
         right_col = ttk.Frame(top_container)
         right_col.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
