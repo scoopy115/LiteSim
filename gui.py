@@ -250,8 +250,8 @@ class ControlPanel(tk.Tk):
             for i, val in enumerate(latest_joints):
                 self.vars[i].set(val)
                 
-                if hasattr(self, 'joint_labels') and i < len(self.joint_labels):
-                    ent = self.joint_labels[i]
+                if hasattr(self, 'joint_entries') and i < len(self.joint_entries):
+                    ent = self.joint_entries[i]
                     
                     has_focus = False
                     try: has_focus = (self.focus_get() == ent)
@@ -765,17 +765,31 @@ class ControlPanel(tk.Tk):
                 self.api.joints_deg = current 
                 self.viz.update_joints(current)
             
-        if hasattr(self, 'joint_labels') and idx < len(self.joint_labels):
-            ent = self.joint_labels[idx]
-            if self.focus_get() != ent:
-                ent.delete(0, tk.END)
-                ent.insert(0, f"{float(val):.1f}")
+        if hasattr(self, 'joint_entries') and idx < len(self.joint_entries):
+            ent = self.joint_entries[idx]
+
+            has_focus = False
+            try: has_focus = (self.focus_get() == ent)
+            except: pass
+
+            if not has_focus:
+                current_state = str(ent['state'])
+                
+                if current_state == 'disabled':
+                    ent.config(state='normal')
+                    ent.delete(0, tk.END)
+                    ent.insert(0, f"{float(val):.1f}")
+                    ent.config(state='disabled')
+                else:
+                    ent.delete(0, tk.END)
+                    ent.insert(0, f"{float(val):.1f}")
         
         self._update_calculated_fields(current)
+
         if self.api.is_connected:
             if not hasattr(self, 'last_slider_time'): self.last_slider_time = 0
 
-            if time.time() - self.last_slider_time > 0.1:
+            if time.time() - self.last_slider_time > 0.05:
                 self.last_slider_time = time.time()
                 
                 threading.Thread(
@@ -784,8 +798,6 @@ class ControlPanel(tk.Tk):
                     kwargs={'speed': 100, 'wait': False}, 
                     daemon=True
                 ).start()
-
-        self._update_calculated_fields(current)
 
     def _on_entry_submit(self, idx):
         ent = self.joint_entries[idx]
@@ -1615,8 +1627,8 @@ class ControlPanel(tk.Tk):
             for s in self.joint_sliders:
                 s.state(ttk_state)
 
-        if hasattr(self, 'joint_labels'):
-            for ent in self.joint_labels:
+        if hasattr(self, 'joint_entries'):
+            for ent in self.joint_entries:
                 ent.config(state=state)
 
         if hasattr(self, 'xyz_entries'):
