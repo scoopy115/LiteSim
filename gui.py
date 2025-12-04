@@ -448,10 +448,7 @@ class ControlPanel(tk.Tk):
         self.btn_scan = ttk.Button(conn_frame, text="Scan for Lite 6", command=self._scan_network)
         self.btn_scan.pack(fill=tk.X)
 
-        # 2. Sliders (Joints)
-        lf = ttk.LabelFrame(left_col, text="Manual Joint Control", padding=10)
-        lf.pack(fill=tk.BOTH, expand=True, pady=5)
-
+        # --- CARTESIAN CONTROL ---
         xyz_frame = ttk.LabelFrame(left_col, text="Cartesian Control", padding=10)
         xyz_frame.pack(fill=tk.X, pady=5)
         
@@ -461,6 +458,7 @@ class ControlPanel(tk.Tk):
         
         axes = ["X", "Y", "Z"]
         self.xyz_entries = []
+        self.xyz_labels = []
         
         for i, axis in enumerate(axes):
             col = ttk.Frame(xyz_frame)
@@ -470,6 +468,7 @@ class ControlPanel(tk.Tk):
             lbl = ttk.Label(col, text=f"{axis}:", font=("Segoe UI", 9, "bold"))
             lbl.pack(anchor="w")
             self._bind_drag_behavior(lbl, i)
+            self.xyz_labels.append(lbl)
             
             # Entry
             ent = ttk.Entry(col)
@@ -479,39 +478,42 @@ class ControlPanel(tk.Tk):
             ent.bind("<FocusOut>", self._on_xyz_submit)
             self.xyz_entries.append(ent)
         
+        # --- JOINT CONTROL ---
+        lf = ttk.LabelFrame(left_col, text="Manual Joint Control", padding=10)
+        
         self.vars = []
         self.joint_entries = [] 
+        self.joint_sliders = []
         
-        for i in range(JOINT_COUNT):
+        for i in range(config.JOINT_COUNT):
             row = ttk.Frame(lf)
             row.pack(fill=tk.X, pady=2)
             
-            header = ttk.Frame(row)
-            header.pack(fill=tk.X)
-            
+            header = ttk.Frame(row); header.pack(fill=tk.X)
             ttk.Label(header, text=f"Joint {i+1}").pack(side=tk.LEFT)
-            
-            ent = ttk.Entry(header, width=6, justify="right")
-            ent.pack(side=tk.RIGHT)
-            ent.insert(0, "0.0")
-            
-            # Bind Enter and Lose focus to apply the angle
+            ent = ttk.Entry(header, width=6, justify="right"); ent.pack(side=tk.RIGHT); ent.insert(0, "0.0")
             ent.bind("<Return>", lambda event, idx=i: self._on_entry_submit(idx))
             ent.bind("<FocusOut>", lambda event, idx=i: self._on_entry_submit(idx))
-            
             self.joint_entries.append(ent)
 
+            # Slider
             v = tk.DoubleVar()
             self.vars.append(v)
-
             min_lim, max_lim = config.JOINT_LIMITS[i]
             
             s = ttk.Scale(row, from_=min_lim, to=max_lim, variable=v, 
                       command=lambda val, idx=i: self._slider_cb(idx, val))
             s.pack(fill=tk.X, pady=(0, 5))
+            
+            self.joint_sliders.append(s)
 
+        self.btn_reset = ttk.Button(lf, text="Reset to Home", command=self._home)
+        self.btn_reset.pack(fill=tk.X, padx=5, pady=5)
         
-        ttk.Button(lf, text="Reset to Home", command=self._home).pack(fill=tk.X, padx=5, pady=5)
+        # Quit button
+        ttk.Button(left_col, text="Quit to Desktop", command=self._on_close).pack(side=tk.BOTTOM, fill=tk.X, pady=10)
+        
+        lf.pack(fill=tk.BOTH, expand=True, pady=5)
 
         ttk.Button(left_col, text="Quit to Desktop", command=self._on_close).pack(side=tk.BOTTOM, fill=tk.X, pady=10)
 
@@ -1432,19 +1434,24 @@ class ControlPanel(tk.Tk):
         except Exception as e:
             messagebox.showerror("Extraction Error", f"Downloaded but failed to extract:\n{e}")
 
-    def _bind_drag_behavior(self, label_widget, entry_index):
+    def _bind_drag_behavior(self, label_widget, entry_index):        
         def on_enter(e):
-            if str(self.btn_run['state']) == 'normal': 
+            if str(self.btn_run['state']) == 'normal' and not self.api.is_connected:
                 label_widget.config(cursor="sb_h_double_arrow")
+            else:
+                label_widget.config(cursor="")
         
         label_widget.bind("<Enter>", on_enter)
         label_widget.bind("<Leave>", lambda e: label_widget.config(cursor=""))
+        
         label_widget.bind("<Button-1>", lambda e: self._start_drag(e, entry_index))
         label_widget.bind("<B1-Motion>", lambda e: self._do_drag(e, entry_index))
         label_widget.bind("<ButtonRelease-1>", self._on_drag_stop)
 
     def _start_drag(self, event, idx):
-        if self.btn_run['state'] == tk.DISABLED: return
+        if self.btn_run['state'] == tk.DISABLED or self.api.is_connected: 
+            return
+
         try:
             current_val = float(self.xyz_entries[idx].get())
             self.drag_data = {"x": event.x_root, "val": current_val, "axis": idx}
@@ -1452,9 +1459,10 @@ class ControlPanel(tk.Tk):
             self.drag_data = {"x": 0, "val": 0.0, "axis": None}
 
     def _do_drag(self, event, idx):
-        if self.btn_run['state'] == tk.DISABLED: return
+        if self.btn_run['state'] == tk.DISABLED or self.api.is_connected: 
+            return
         
-        if time.time() - self.last_drag_time < 0.1: return
+        if time.time() - self.last_drag_time < 0.05: return
         self.last_drag_time = time.time()
         
         try:
@@ -1475,53 +1483,42 @@ class ControlPanel(tk.Tk):
             self._on_xyz_submit(skip_safety=False)
 
     def _on_xyz_submit(self, event=None, skip_safety=False):
+        # Debounce
         if self.xyz_busy: return
         self.xyz_busy = True
 
         try:
+            if self.api.is_connected:
+                print("[GUI] Cartesian control is disabled when connected to a real Lite 6.")
+                return
+
             if str(self.btn_run['state']) == 'disabled': return
 
             try:
                 x_mm = float(self.xyz_entries[0].get())
                 y_mm = float(self.xyz_entries[1].get())
                 z_mm = float(self.xyz_entries[2].get())
-            except ValueError:
-                print("[GUI] Invalid XYZ input")
-                return 
+            except ValueError: return 
 
             target_pos_m = [x_mm / 1000.0, y_mm / 1000.0, z_mm / 1000.0]
             
             if not skip_safety:
                 current_rpy = self.api.last_rpy 
-                
-                try:
-                    is_safe, msg = self._is_move_safe(target_pos_m, current_rpy)
-                    if not is_safe:
-                        if event is not None:
-                            messagebox.showwarning("Movement Blocked", f"Unsafe Move!\n\n{msg}")
-                        return
-                except Exception as e:
-                    print(f"[GUI WARN] Safety check failed, moving anyway: {e}")
+                is_safe, msg = self._is_move_safe(target_pos_m, current_rpy)
+                if not is_safe:
+                    if event is not None:
+                        messagebox.showwarning("Movement Blocked", f"Unsafe Move!\n\n{msg}")
+                    return
 
-            print(f"[GUI] Sending XYZ move: {x_mm}, {y_mm}, {z_mm}")
-            
-            result = self.api.set_position(
-                x=x_mm, y=y_mm, z=z_mm, 
-                speed=100, 
-                wait=False, 
-                silent=skip_safety 
-            )
+            result = self.api.set_position(x=x_mm, y=y_mm, z=z_mm, speed=100, wait=False, silent=skip_safety)
             
             if result == -2:
                 self.after(10, lambda: messagebox.showerror("IK ERROR", "Robot stuck/Singularity."))
-
-            if not skip_safety:
-                self.focus_set()
+            
+            if not skip_safety: self.focus_set()
 
         except Exception as e:
-            print(f"[GUI ERROR] XYZ Submit failed: {e}")
-            traceback.print_exc()
-            
+            print(f"XYZ Error: {e}")
         finally:
             self.xyz_busy = False
 
@@ -1617,7 +1614,6 @@ class ControlPanel(tk.Tk):
 
     def _set_manual_controls_state(self, enable):
         state = "normal" if enable else "disabled"
-        
         ttk_state = ["!disabled"] if enable else ["disabled"]
 
         if hasattr(self, 'btn_reset'):
@@ -1634,6 +1630,11 @@ class ControlPanel(tk.Tk):
         if hasattr(self, 'xyz_entries'):
             for ent in self.xyz_entries:
                 ent.config(state=state)
+        
+        if hasattr(self, 'xyz_labels'):
+            cursor = "sb_h_double_arrow" if enable else ""
+            for lbl in self.xyz_labels:
+                lbl.config(state=state, cursor=cursor)
         
 if __name__ == "__main__":
     app = ControlPanel()
