@@ -229,7 +229,7 @@ class RobotVisualizer:
             current_ee_pos = None
             
             current_collision = False
-            COLLISION_THRESHOLD = 0.009 
+            COLLISION_THRESHOLD = 0.001 
 
             for i, matrix in enumerate(matrices):
                 if i == len(matrices) - 1:
