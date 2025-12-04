@@ -94,6 +94,8 @@ class ControlPanel(tk.Tk):
         self.last_drag_time = 0
         self.xyz_busy = False        
         self.rendering_paused = False
+        self.last_drag_time = 0
+        self.last_slider_time = 0
 
         self._start_update_check()
         self._build_ui()
@@ -213,7 +215,6 @@ class ControlPanel(tk.Tk):
         
         self.ctx.stop_flag = False 
         self.ctx.paused = False
-        self._stop_script()
         self._home()
         
         for target, var in self.color_vars.items():
@@ -223,8 +224,8 @@ class ControlPanel(tk.Tk):
         self.after(100, self._resume_from_crash)
 
     def _resume_from_crash(self):
-        self.rendering_paused = False
         self.is_handling_crash = False
+        self.rendering_paused = False   
         self._update_3d_loop()
 
     def _process_queues(self):
@@ -243,19 +244,33 @@ class ControlPanel(tk.Tk):
         if latest_joints:
             with self.data_lock:
                 self.viz.update_joints(latest_joints)
-                
+            
+            is_running = (str(self.btn_run['state']) == 'disabled')
+
             for i, val in enumerate(latest_joints):
                 self.vars[i].set(val)
                 
-                if hasattr(self, 'joint_entries') and i < len(self.joint_entries):
-                    ent = self.joint_entries[i]
+                if hasattr(self, 'joint_labels') and i < len(self.joint_labels):
+                    ent = self.joint_labels[i]
+                    
+                    has_focus = False
+                    try: has_focus = (self.focus_get() == ent)
+                    except: pass
 
-                    if self.focus_get() != ent:
-                        ent.delete(0, tk.END)
-                        ent.insert(0, f"{val:.1f}")
+                    if not has_focus:
+                        if is_running:
+                            ent.config(state='normal')
+                            ent.delete(0, tk.END)
+                            ent.insert(0, f"{val:.1f}")
+                            ent.config(state='disabled')
+                        else:
+                            ent.delete(0, tk.END)
+                            ent.insert(0, f"{val:.1f}")
 
-            self._update_calculated_fields(latest_joints)
-                
+            try:
+                self._update_calculated_fields(latest_joints)
+            except Exception: pass
+
         self.after(30, self._process_queues)
 
     # Custom gripper callback
@@ -743,16 +758,32 @@ class ControlPanel(tk.Tk):
         self.api.speed_multiplier = v
 
     def _slider_cb(self, idx, val):
-        with self.data_lock:
-            current = [v.get() for v in self.vars]
-            self.api.joints_deg = current 
-            self.viz.update_joints(current)
-            
-        ent = self.joint_entries[idx]
+        current = [v.get() for v in self.vars]
         
-        if self.focus_get() != ent:
-            ent.delete(0, tk.END)
-            ent.insert(0, f"{float(val):.1f}")
+        with self.data_lock:
+            if not self.api.is_connected:
+                self.api.joints_deg = current 
+                self.viz.update_joints(current)
+            
+        if hasattr(self, 'joint_labels') and idx < len(self.joint_labels):
+            ent = self.joint_labels[idx]
+            if self.focus_get() != ent:
+                ent.delete(0, tk.END)
+                ent.insert(0, f"{float(val):.1f}")
+        
+        self._update_calculated_fields(current)
+        if self.api.is_connected:
+            if not hasattr(self, 'last_slider_time'): self.last_slider_time = 0
+
+            if time.time() - self.last_slider_time > 0.1:
+                self.last_slider_time = time.time()
+                
+                threading.Thread(
+                    target=self.api.set_servo_angle, 
+                    args=(current,), 
+                    kwargs={'speed': 100, 'wait': False}, 
+                    daemon=True
+                ).start()
 
         self._update_calculated_fields(current)
 
@@ -990,6 +1021,7 @@ class ControlPanel(tk.Tk):
 
     def _toggle_connection(self):
         if self.api.is_connected:
+            self._set_manual_controls_state(True)
             self.api.disconnect_real_robot()
             self.btn_connect.config(text="Connect", state=tk.NORMAL)
             self.ent_ip.config(state=tk.NORMAL)
@@ -998,6 +1030,7 @@ class ControlPanel(tk.Tk):
             self.ctx.log_queue.put("[GUI] Disconnected manually.")
         else:
             # CONNECT
+            self._set_manual_controls_state(False)
             ip = self.ent_ip.get().strip()
             
             allowed = set("0123456789.")
@@ -1048,7 +1081,7 @@ class ControlPanel(tk.Tk):
 
     def _scan_network(self):
         self.btn_scan.config(text="Scanning...", state=tk.DISABLED)
-        self._set_status_color("#ffb86c") # Oranje tijdens scannen
+        self._set_status_color("#ffb86c") 
         threading.Thread(target=self._scan_thread, daemon=True).start()
 
     def _scan_thread(self):
@@ -1408,20 +1441,20 @@ class ControlPanel(tk.Tk):
     def _do_drag(self, event, idx):
         if self.btn_run['state'] == tk.DISABLED: return
         
-        if time.time() - self.last_drag_time < 0.05: return
+        if time.time() - self.last_drag_time < 0.1: return
         self.last_drag_time = time.time()
         
-        delta = event.x_root - self.drag_data["x"]
-        new_val = self.drag_data["val"] + delta # 1 pixel = 1 mm
-        
-        ent = self.xyz_entries[idx]
-        ent.delete(0, tk.END)
-        ent.insert(0, f"{new_val:.1f}")
-
-        if self.api.is_connected:
-            pass
-        else:
+        try:
+            delta = event.x_root - self.drag_data["x"]
+            new_val = self.drag_data["val"] + delta 
+            
+            ent = self.xyz_entries[idx]
+            ent.delete(0, tk.END)
+            ent.insert(0, f"{new_val:.1f}")
+            
             self._on_xyz_submit(skip_safety=True)
+            
+        except: pass
 
     def _on_drag_stop(self, event):
         if self.api.is_connected:
@@ -1431,27 +1464,102 @@ class ControlPanel(tk.Tk):
     def _on_xyz_submit(self, event=None, skip_safety=False):
         if self.xyz_busy: return
         self.xyz_busy = True
-        
+
         try:
-            if self.btn_run['state'] == tk.DISABLED: return
+            if str(self.btn_run['state']) == 'disabled': return
 
             try:
                 x_mm = float(self.xyz_entries[0].get())
                 y_mm = float(self.xyz_entries[1].get())
                 z_mm = float(self.xyz_entries[2].get())
-            except ValueError: return 
+            except ValueError:
+                print("[GUI] Invalid XYZ input")
+                return 
 
-            self.api.set_position(
-                x=x_mm, y=y_mm, z=z_mm,
-                speed=100,
-                wait=False,
-                silent=True
+            target_pos_m = [x_mm / 1000.0, y_mm / 1000.0, z_mm / 1000.0]
+            
+            if not skip_safety:
+                current_rpy = self.api.last_rpy 
+                
+                try:
+                    is_safe, msg = self._is_move_safe(target_pos_m, current_rpy)
+                    if not is_safe:
+                        if event is not None:
+                            messagebox.showwarning("Movement Blocked", f"Unsafe Move!\n\n{msg}")
+                        return
+                except Exception as e:
+                    print(f"[GUI WARN] Safety check failed, moving anyway: {e}")
+
+            print(f"[GUI] Sending XYZ move: {x_mm}, {y_mm}, {z_mm}")
+            
+            result = self.api.set_position(
+                x=x_mm, y=y_mm, z=z_mm, 
+                speed=100, 
+                wait=False, 
+                silent=skip_safety 
             )
             
-        except Exception: 
-            pass
+            if result == -2:
+                self.after(10, lambda: messagebox.showerror("IK ERROR", "Robot stuck/Singularity."))
+
+            if not skip_safety:
+                self.focus_set()
+
+        except Exception as e:
+            print(f"[GUI ERROR] XYZ Submit failed: {e}")
+            traceback.print_exc()
+            
         finally:
             self.xyz_busy = False
+
+    def _is_move_safe(self, target_pos_m, target_rpy):
+        try:
+            chain = self.api.chain
+            current_joints = self.api.joints_deg
+            
+            target_orient = rpy_to_matrix(target_rpy[0], target_rpy[1], target_rpy[2])
+            
+            start_rads = [0] + [math.radians(j) for j in current_joints] + [0]
+            
+            if len(start_rads) < len(chain.links):
+                start_rads += [0] * (len(chain.links) - len(start_rads))
+            start_rads = start_rads[:len(chain.links)]
+
+            target_joints_rad = chain.inverse_kinematics(
+                target_position=target_pos_m,
+                target_orientation=target_orient, 
+                orientation_mode="all",
+                initial_position=start_rads
+            )
+
+            if hasattr(np, 'isnan') and np.isnan(target_joints_rad).any():
+                return False, "Calculation failed (Target unreachable)."
+
+            matrices = chain.forward_kinematics(target_joints_rad, full_kinematics=True)
+            
+            for i, matrix in enumerate(matrices):
+                if i == len(matrices) - 1:
+                    wrist_z = matrix[2, 3] + config.ROBOT_Z_OFFSET
+                    
+                    if wrist_z < 0.0: 
+                        return False, f"Wrist hits floor (Z={wrist_z:.3f}m)"
+                    
+                    if hasattr(self.viz, 'eef_offset_z') and self.viz.eef_offset_z > 0:
+                        rot_matrix = matrix[:3, :3]
+                        local_offset = np.array([0.0, 0.0, self.viz.eef_offset_z])
+                        world_offset = rot_matrix @ local_offset
+                        
+                        tip_z = wrist_z + world_offset[2]
+                        
+                        if tip_z < 0.0:
+                            return False, f"Tool Tip hits floor (Z={tip_z:.3f}m)"
+            
+            return True, "Safe"
+
+        except Exception as e:
+            print(f"[SAFETY] Check crashed: {e}")
+            return False, f"Safety calculation error: {e}"
+        
 
     def _update_calculated_fields(self, joints_list):
         try:
@@ -1459,11 +1567,11 @@ class ControlPanel(tk.Tk):
             if not chain: return
 
             rads = [0] + [math.radians(j) for j in joints_list] + [0]
-            
             if len(rads) < len(chain.links):
                 rads += [0] * (len(chain.links) - len(rads))
+            rads = rads[:len(chain.links)]
             
-            matrix = chain.forward_kinematics(rads[:len(chain.links)])
+            matrix = chain.forward_kinematics(rads)
             
             coords_mm = [
                 matrix[0, 3] * 1000.0,
@@ -1471,14 +1579,19 @@ class ControlPanel(tk.Tk):
                 (matrix[2, 3] + config.ROBOT_Z_OFFSET) * 1000.0
             ]
             
-            controls_disabled = (str(self.btn_run['state']) == 'disabled')
+            is_running = (str(self.btn_run['state']) == 'disabled')
+
+            current_focus = None
+            try: current_focus = self.focus_get()
+            except: pass
 
             for i, val in enumerate(coords_mm):
                 if i < len(self.xyz_entries):
                     ent = self.xyz_entries[i]
                     
-                    if self.focus_get() != ent:
-                        if controls_disabled:
+                    if current_focus != ent and (time.time() - self.last_drag_time > 0.2):
+                        
+                        if is_running:
                             ent.config(state='normal')
                             ent.delete(0, tk.END)
                             ent.insert(0, f"{val:.1f}")
@@ -1488,6 +1601,26 @@ class ControlPanel(tk.Tk):
                             ent.insert(0, f"{val:.1f}")
         except Exception: 
             pass
+
+    def _set_manual_controls_state(self, enable):
+        state = "normal" if enable else "disabled"
+        
+        ttk_state = ["!disabled"] if enable else ["disabled"]
+
+        if hasattr(self, 'btn_reset'):
+            self.btn_reset.config(state=state)
+
+        if hasattr(self, 'joint_sliders'):
+            for s in self.joint_sliders:
+                s.state(ttk_state)
+
+        if hasattr(self, 'joint_labels'):
+            for ent in self.joint_labels:
+                ent.config(state=state)
+
+        if hasattr(self, 'xyz_entries'):
+            for ent in self.xyz_entries:
+                ent.config(state=state)
         
 if __name__ == "__main__":
     app = ControlPanel()
