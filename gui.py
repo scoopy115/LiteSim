@@ -917,6 +917,9 @@ class ControlPanel(tk.Tk):
         if hasattr(self, 'xyz_entries'):
             for ent in self.xyz_entries: 
                 ent.config(state=config_state)
+        
+        if hasattr(self, 'btn_reset'):
+            self.btn_reset.config(state=config_state)
 
     def _toggle_pause(self):
         if self.ctx.paused:
