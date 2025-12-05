@@ -397,7 +397,7 @@ class ControlPanel(tk.Tk):
             foreground="#ff5015",
             cursor="hand2"
         )
-        lbl_github.pack(anchor="e", pady=(0, 2)) # 'e' = East (Rechts uitlijnen)
+        lbl_github.pack(anchor="e", pady=(0, 2))
         lbl_github.bind("<Button-1>", lambda e: webbrowser.open(GITHUB_URL))
 
         # Portfolio Link
@@ -411,46 +411,68 @@ class ControlPanel(tk.Tk):
         lbl_portfolio.pack(anchor="e")
         lbl_portfolio.bind("<Button-1>", lambda e: webbrowser.open(PORTFOLIO_URL))
 
-        # Grid container
-        top_container = ttk.Frame(main)
-        top_container.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
+        # Main content container (2 columns)
+        content_container = ttk.Frame(main)
+        content_container.pack(fill=tk.BOTH, expand=True, pady=(0, 5))
         
-        top_container.columnconfigure(0, weight=1, uniform="group1") # Left (1/5)
-        top_container.columnconfigure(1, weight=3, uniform="group1") # Middle (3/5)
-        top_container.columnconfigure(2, weight=1, uniform="group1") # Right (1/5)
-        
-        top_container.rowconfigure(0, weight=1)
+        content_container.columnconfigure(0, weight=3)  # Left: 2/3
+        content_container.columnconfigure(1, weight=1)  # Right: 1/3
+        content_container.rowconfigure(0, weight=1)
 
-        # LEFT
-        left_col = ttk.Frame(top_container)
+        # LEFT COLUMN: Physical Connection + Tabs
+        left_col = ttk.Frame(content_container)
         left_col.grid(row=0, column=0, sticky="nsew", padx=(0, 5))
+        left_col.columnconfigure(0, weight=1)
+        left_col.rowconfigure(1, weight=1)
 
-        # 1. Connection Frame
         conn_frame = ttk.LabelFrame(left_col, text="Physical Connection", padding=10)
-        conn_frame.pack(fill=tk.X, pady=5)
+        conn_frame.grid(row=0, column=0, sticky="ew", pady=(0, 5))
         
         conn_header = ttk.Frame(conn_frame)
         conn_header.pack(fill=tk.X, pady=(0, 2))
         
-        ttk.Label(conn_header, text="IP Address:").pack(side=tk.LEFT)
         bg_color = ttk.Style().lookup("TFrame", "background")
-        self.status_canvas = tk.Canvas(conn_header, width=14, height=14, bg=bg_color, highlightthickness=0)
-        self.status_canvas.pack(side=tk.RIGHT)
+        self.status_canvas = tk.Canvas(conn_header, width=10, height=10, bg=bg_color, highlightthickness=0)
+        self.status_canvas.pack(side=tk.LEFT, padx=(0, 5))
 
-        self.status_dot = self.status_canvas.create_oval(2, 2, 12, 12, fill="#ff5555", outline="")
+        self.status_dot = self.status_canvas.create_oval(1, 1, 9, 9, fill="#ff5555", outline="")
         
-        self.ent_ip = ttk.Entry(conn_frame)
-        self.ent_ip.pack(fill=tk.X, pady=(0, 5))
+        ttk.Label(conn_header, text="IP Address:").pack(side=tk.LEFT)
+        
+        # IP input row with buttons
+        ip_row = ttk.Frame(conn_frame)
+        ip_row.pack(fill=tk.X, pady=(0, 5))
+        ip_row.columnconfigure(0, weight=1)
+        ip_row.columnconfigure(1, weight=0)
+        ip_row.columnconfigure(2, weight=0)
+        
+        self.ent_ip = ttk.Entry(ip_row)
+        self.ent_ip.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         self.ent_ip.insert(0, "192.168.1.xxx")
         
-        self.btn_connect = ttk.Button(conn_frame, text="Connect", command=self._toggle_connection)
-        self.btn_connect.pack(fill=tk.X, pady=(0, 5))
-        self.btn_scan = ttk.Button(conn_frame, text="Scan for Lite 6", command=self._scan_network)
-        self.btn_scan.pack(fill=tk.X)
+        self.btn_connect = ttk.Button(ip_row, text="Connect", command=self._toggle_connection)
+        self.btn_connect.grid(row=0, column=1, sticky="ew", padx=(0, 5))
+        
+        self.btn_scan = ttk.Button(ip_row, text="Scan for Lite 6", command=self._scan_network)
+        self.btn_scan.grid(row=0, column=2, sticky="ew")
 
-        # --- CARTESIAN CONTROL ---
-        xyz_frame = ttk.LabelFrame(left_col, text="Cartesian Control", padding=10)
-        xyz_frame.pack(fill=tk.X, pady=5)
+        # Tabbed interface
+        tab_container = ttk.Frame(left_col)
+        tab_container.grid(row=1, column=0, sticky="nsew")
+        tab_container.columnconfigure(0, weight=1)
+        tab_container.rowconfigure(0, weight=1)
+
+        notebook = ttk.Notebook(tab_container)
+        notebook.pack(fill=tk.BOTH, expand=True)
+
+        # ========== TAB 1: MANUAL CONTROLS ==========
+        tab_manual = ttk.Frame(notebook)
+        notebook.add(tab_manual, text="Manual")
+        tab_manual.columnconfigure(0, weight=1)
+        
+        # Cartesian Control
+        xyz_frame = ttk.LabelFrame(tab_manual, text="Cartesian Control", padding=10)
+        xyz_frame.pack(fill=tk.X, pady=5, padx=5)
         
         xyz_frame.columnconfigure(0, weight=1)
         xyz_frame.columnconfigure(1, weight=1)
@@ -464,13 +486,11 @@ class ControlPanel(tk.Tk):
             col = ttk.Frame(xyz_frame)
             col.grid(row=0, column=i, sticky="ew", padx=5)
             
-            # Label
             lbl = ttk.Label(col, text=f"{axis}:", font=("Segoe UI", 9, "bold"))
             lbl.pack(anchor="w")
             self._bind_drag_behavior(lbl, i)
             self.xyz_labels.append(lbl)
             
-            # Entry
             ent = ttk.Entry(col)
             ent.pack(fill=tk.X)
             ent.insert(0, "0.0")
@@ -478,20 +498,32 @@ class ControlPanel(tk.Tk):
             ent.bind("<FocusOut>", self._on_xyz_submit)
             self.xyz_entries.append(ent)
         
-        # --- JOINT CONTROL ---
-        lf = ttk.LabelFrame(left_col, text="Manual Joint Control", padding=10)
+        # Joint Control
+        joint_frame = ttk.LabelFrame(tab_manual, text="Manual Joint Control", padding=10)
+        joint_frame.pack(fill=tk.BOTH, expand=True, pady=5, padx=5)
+        
+        joint_frame.columnconfigure(0, weight=1)
+        joint_frame.columnconfigure(1, weight=1)
         
         self.vars = []
-        self.joint_entries = [] 
+        self.joint_entries = []
         self.joint_sliders = []
         
         for i in range(config.JOINT_COUNT):
-            row = ttk.Frame(lf)
-            row.pack(fill=tk.X, pady=2)
+            row = i // 2
+            col = i % 2  
             
-            header = ttk.Frame(row); header.pack(fill=tk.X)
+            joint_col = ttk.Frame(joint_frame)
+            joint_col.grid(row=row, column=col, sticky="ew", padx=5, pady=5)
+            joint_col.columnconfigure(0, weight=1)
+            
+            # Label and entry
+            header = ttk.Frame(joint_col)
+            header.pack(fill=tk.X)
             ttk.Label(header, text=f"Joint {i+1}").pack(side=tk.LEFT)
-            ent = ttk.Entry(header, width=6, justify="right"); ent.pack(side=tk.RIGHT); ent.insert(0, "0.0")
+            ent = ttk.Entry(header, width=6, justify="right")
+            ent.pack(side=tk.RIGHT)
+            ent.insert(0, "0.0")
             ent.bind("<Return>", lambda event, idx=i: self._on_entry_submit(idx))
             ent.bind("<FocusOut>", lambda event, idx=i: self._on_entry_submit(idx))
             self.joint_entries.append(ent)
@@ -501,27 +533,112 @@ class ControlPanel(tk.Tk):
             self.vars.append(v)
             min_lim, max_lim = config.JOINT_LIMITS[i]
             
-            s = ttk.Scale(row, from_=min_lim, to=max_lim, variable=v, 
+            s = ttk.Scale(joint_col, from_=min_lim, to=max_lim, variable=v, 
                       command=lambda val, idx=i: self._slider_cb(idx, val))
-            s.pack(fill=tk.X, pady=(0, 5))
+            s.pack(fill=tk.X, pady=(5, 0))
             
             self.joint_sliders.append(s)
 
-        self.btn_reset = ttk.Button(lf, text="Reset to Home", command=self._home)
-        self.btn_reset.pack(fill=tk.X, padx=5, pady=5)
-        
-        # Quit button
-        ttk.Button(left_col, text="Quit to Desktop", command=self._on_close).pack(side=tk.BOTTOM, fill=tk.X, pady=10)
-        
-        lf.pack(fill=tk.BOTH, expand=True, pady=5)
+        # Reset to Home button
+        self.btn_reset = ttk.Button(joint_frame, text="Reset to Home", command=self._home)
+        self.btn_reset.grid(row=3, column=0, columnspan=2, sticky="ew", padx=5, pady=(10, 0))
 
-        # RIGHT
-        right_col = ttk.Frame(top_container)
-        right_col.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
 
-        # 1. End-Effector Configuration
-        ef_frame = ttk.LabelFrame(right_col, text="End-Effector Configuration")
-        ef_frame.pack(fill=tk.X, pady=5)
+        # ========== TAB 2: SCRIPT LOADING ==========
+        tab_script = ttk.Frame(notebook)
+        notebook.add(tab_script, text="Simulating")
+        tab_script.columnconfigure(0, weight=1)
+
+        # Script Selection
+        sf = ttk.LabelFrame(tab_script, text="Script Selection", padding=10)
+        sf.pack(fill=tk.X, pady=5, padx=5)
+        
+        sf_inner = ttk.Frame(sf)
+        sf_inner.pack(fill=tk.X, pady=5)
+        self.combo_history = ttk.Combobox(sf_inner, state="readonly")
+        self.combo_history.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self.combo_history.bind("<<ComboboxSelected>>", self._on_history_select)
+        self.btn_load_script = ttk.Button(sf_inner, text="Load .py script...", command=self._browse_script)
+        self.btn_load_script.pack(side=tk.LEFT)
+
+        # Loop & Speed Settings
+        setf = ttk.LabelFrame(tab_script, text="Playback Settings", padding=10)
+        setf.pack(fill=tk.X, pady=5, padx=5)
+        
+        set_inner = ttk.Frame(setf)
+        set_inner.pack(fill=tk.X, pady=5)
+        ttk.Checkbutton(set_inner, text="Loop Script", variable=self.loop_var).pack(side=tk.LEFT, padx=5)
+        
+        ttk.Separator(set_inner, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
+        
+        ttk.Label(set_inner, text="Sim Speed:").pack(side=tk.LEFT, padx=5)
+        self.speed_scale = ttk.Scale(set_inner, from_=0.1, to=5.0, variable=self.speed_var, command=self._speed_cb)
+        self.speed_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.speed_lbl = ttk.Label(set_inner, text="1.0x", width=4)
+        self.speed_lbl.pack(side=tk.LEFT)
+
+        # Simulation Controls
+        cf = ttk.LabelFrame(tab_script, text="Simulation Controls", padding=10)
+        cf.pack(fill=tk.X, pady=5, padx=5)
+        cf.columnconfigure(0, weight=1)
+        cf.columnconfigure(1, weight=1)
+        cf.columnconfigure(2, weight=1)
+        cf.columnconfigure(3, weight=1)
+
+        self.btn_run = ttk.Button(cf, text="▶ Run", command=self._run_current_script, state=tk.DISABLED)
+        self.btn_run.grid(row=0, column=0, sticky="ew", padx=5, pady=10)
+        
+        self.btn_pause = ttk.Button(cf, text="⏸ Pause", command=self._toggle_pause, state=tk.DISABLED)
+        self.btn_pause.grid(row=0, column=1, sticky="ew", padx=5, pady=10)
+        
+        self.btn_restart = ttk.Button(cf, text="↻ Restart", command=self._restart_script, state=tk.DISABLED)
+        self.btn_restart.grid(row=0, column=2, sticky="ew", padx=5, pady=10)
+
+        self.btn_stop = ttk.Button(cf, text="⏹ Stop", command=self._stop_script, state=tk.DISABLED)
+        self.btn_stop.grid(row=0, column=3, sticky="ew", padx=5, pady=10)
+
+        # ========== TAB 3: CAMERA CONTROLS ==========
+        tab_camera = ttk.Frame(notebook)
+        notebook.add(tab_camera, text="Camera")
+        
+        vf = ttk.LabelFrame(tab_camera, text="View Presets", padding=20)
+        vf.pack(fill=tk.BOTH, expand=True, pady=5, padx=5)
+        
+        vf.columnconfigure(0, weight=1, uniform="camera")
+        vf.columnconfigure(1, weight=1, uniform="camera")
+        vf.columnconfigure(2, weight=1, uniform="camera")
+        vf.rowconfigure(0, weight=1, uniform="camera")
+        vf.rowconfigure(1, weight=1, uniform="camera")
+        
+        camera_buttons = [
+            ("Front", 'front', 1.6),
+            ("Left", 'side-l', 1.6),
+            ("Right", 'side-r', 1.6),
+            ("Rear", 'rear', 1.6),
+            ("Top", 'top', 1.6),
+            ("Isometric", None, None)
+        ]
+        
+        for idx, (label, view, dist) in enumerate(camera_buttons):
+            row = idx // 3
+            col = idx % 3
+            
+            if view is None:
+                cmd = self._reset_view
+            else:
+                cmd = lambda v=view, d=dist: self.viz.set_camera_view(v, d)
+            
+            btn = ttk.Button(vf, text=label, command=cmd)
+            btn.grid(row=row, column=col, sticky="nsew", padx=10, pady=10)
+
+        # ========== TAB 4: VISIBILITY SETTINGS ==========
+        tab_visibility = ttk.Frame(notebook)
+        notebook.add(tab_visibility, text="Visibility")
+        tab_visibility.columnconfigure(0, weight=1)
+        
+        # End-Effector Configuration
+        ef_frame = ttk.LabelFrame(tab_visibility, text="End-Effector Configuration", padding=10)
+        ef_frame.pack(fill=tk.X, pady=5, padx=5)
 
         ef_top = ttk.Frame(ef_frame)
         ef_top.pack(fill=tk.X, pady=2)
@@ -537,100 +654,94 @@ class ControlPanel(tk.Tk):
 
         ef_bot = ttk.Frame(ef_frame)
         ef_bot.pack(fill=tk.X, pady=(5, 2))
-        ttk.Label(ef_bot, text="Presets:").pack(side=tk.LEFT, padx=5)
+        ef_bot.columnconfigure(0, weight=1)
+        ef_bot.columnconfigure(1, weight=1)
+        ef_bot.columnconfigure(2, weight=1)
         self.btn_preset_std = ttk.Button(ef_bot, text="Default Gripper", command=self._load_std_gripper)
-        self.btn_preset_std.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.btn_preset_std.grid(row=0, column=0, sticky="ew", padx=2)
         
         self.btn_preset_vac = ttk.Button(ef_bot, text="Vacuum Gripper", command=self._load_vac_gripper)
-        self.btn_preset_vac.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.btn_preset_vac.grid(row=0, column=1, sticky="ew", padx=2)
         
         self.btn_preset_remove = ttk.Button(ef_bot, text="Remove", command=self._remove_gripper)
-        self.btn_preset_remove.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        self.btn_preset_remove.grid(row=0, column=2, sticky="ew", padx=2)
+        
+        # Trace Settings
+        trace_row = ttk.LabelFrame(tab_visibility, text="Trace Settings", padding=10)
+        trace_row.pack(fill=tk.X, pady=5, padx=5)
 
-        # 2. Script Loading
-        sf = ttk.LabelFrame(right_col, text="Script Loading")
-        sf.pack(fill=tk.X, pady=5)
-        
-        sf_inner = ttk.Frame(sf)
-        sf_inner.pack(fill=tk.X, pady=5)
-        self.combo_history = ttk.Combobox(sf_inner, state="readonly")
-        self.combo_history.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.combo_history.bind("<<ComboboxSelected>>", self._on_history_select)
-        self.btn_load_script = ttk.Button(sf_inner, text="Load .py script...", command=self._browse_script)
-        self.btn_load_script.pack(side=tk.LEFT, padx=5)
+        def toggle_trace():
+            self.viz.set_trace_enable(self.trace_var.get())
 
-        # 3. General Settings
-        setf = ttk.LabelFrame(right_col, text="General Settings")
-        setf.pack(fill=tk.X, pady=5)
-        
-        set_inner = ttk.Frame(setf)
-        set_inner.pack(fill=tk.X, pady=5)
-        ttk.Checkbutton(set_inner, text="Loop Script", variable=self.loop_var).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Separator(set_inner, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=10)
-        
-        ttk.Label(set_inner, text="Sim Speed:").pack(side=tk.LEFT)
-        self.speed_scale = ttk.Scale(set_inner, from_=0.1, to=5.0, variable=self.speed_var, command=self._speed_cb)
-        self.speed_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        self.speed_lbl = ttk.Label(set_inner, text="1.0x", width=4)
-        self.speed_lbl.pack(side=tk.LEFT)
+        self.chk_trace = ttk.Checkbutton(trace_row, text="Trace Path", 
+                        variable=self.trace_var, 
+                        command=toggle_trace)
+        self.chk_trace.pack(side=tk.LEFT, padx=5)
 
-        # 4. Simulation Controls
-        cf = ttk.LabelFrame(right_col, text="Simulation Controls")
-        cf.pack(fill=tk.X, pady=5)
-        cf.columnconfigure(0, weight=1)
-        cf.columnconfigure(1, weight=1)
-        cf.columnconfigure(2, weight=1)
-        cf.columnconfigure(3, weight=1)
+        self.trace_mode_var = tk.StringVar(value="Wrist")
+        
+        def change_trace_source(event):
+            mode = self.trace_mode_var.get().lower()
+            self.viz.trace_source = mode
+            self.viz.clear_trace()
 
-        # Big buttons
-        self.btn_run = ttk.Button(cf, text="▶ Run", command=self._run_current_script, state=tk.DISABLED)
-        self.btn_run.grid(row=0, column=0, sticky="ew", padx=5, pady=10)
-        
-        self.btn_stop = ttk.Button(cf, text="⏹ Stop", command=self._stop_script, state=tk.DISABLED)
-        self.btn_stop.grid(row=0, column=3, sticky="ew", padx=5, pady=10)
-        
-        self.btn_pause = ttk.Button(cf, text="⏸ Pause", command=self._toggle_pause, state=tk.DISABLED)
-        self.btn_pause.grid(row=0, column=1, sticky="ew", padx=5, pady=10)
-        
-        self.btn_restart = ttk.Button(cf, text="↻ Restart", command=self._restart_script, state=tk.DISABLED)
-        self.btn_restart.grid(row=0, column=2, sticky="ew", padx=5, pady=10)
+        self.trace_combo = ttk.Combobox(trace_row, textvariable=self.trace_mode_var, 
+                                   values=["Wrist", "Effector Tip"], state="readonly", width=15)
+        self.trace_combo.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
+        self.trace_combo.bind("<<ComboboxSelected>>", change_trace_source)
 
-        # 5. View Controls
-        vf = ttk.LabelFrame(right_col, text="Camera Controls")
-        vf.pack(fill=tk.X, pady=5)
-        
-        # Grid layout for view buttons
-        vf.columnconfigure(0, weight=1)
-        vf.columnconfigure(1, weight=1)
-        vf.columnconfigure(2, weight=1)
-        vf.columnconfigure(3, weight=1)
-        vf.columnconfigure(4, weight=1)
-        vf.columnconfigure(5, weight=1)
-        
-        ttk.Button(vf, text="Front", command=lambda: self.viz.set_camera_view('front', 1.6)).grid(row=0, column=0, sticky="ew", padx=2, pady=5)
-        ttk.Button(vf, text="Left", command=lambda: self.viz.set_camera_view('side-l', 1.6)).grid(row=0, column=1, sticky="ew", padx=2, pady=5)
-        ttk.Button(vf, text="Right", command=lambda: self.viz.set_camera_view('side-r', 1.6)).grid(row=0, column=2, sticky="ew", padx=2, pady=5)
-        ttk.Button(vf, text="Rear", command=lambda: self.viz.set_camera_view('rear', 1.6)).grid(row=0, column=3, sticky="ew", padx=2, pady=5)
-        ttk.Button(vf, text="Top", command=lambda: self.viz.set_camera_view('top', 1.6)).grid(row=0, column=4, sticky="ew", padx=2, pady=5)
-        ttk.Button(vf, text="Iso", command=self._reset_view).grid(row=0, column=5, sticky="ew", padx=2, pady=5)
+        # Ghost Mode & Visibility
+        visibility_row = ttk.LabelFrame(tab_visibility, text="Display Modes", padding=10)
+        visibility_row.pack(fill=tk.X, pady=5, padx=5)
 
-        # Color Settings
-        cf_frame = ttk.LabelFrame(right_col, text="Color Settings")
-        cf_frame.pack(fill=tk.X, pady=5)
+        self.ghost_mode_var = tk.BooleanVar(value=False)
+        self.ignore_eef_var = tk.BooleanVar(value=False)
+        self.collision_alert_var = tk.BooleanVar(value=True)
+
+        def update_ghost_state():
+            is_ghost = self.ghost_mode_var.get()
+            ignore_eef = self.ignore_eef_var.get()    
+            
+            self.viz.set_ghost_mode(is_ghost, ignore_eef)
+            
+            if is_ghost:
+                chk_ignore.state(["!disabled"]) 
+            else:
+                chk_ignore.state(["disabled"])
+
+        ttk.Checkbutton(visibility_row, text="Ghost Mode", 
+                        variable=self.ghost_mode_var, 
+                        command=update_ghost_state).pack(anchor="w", padx=5, pady=5)
+
+        chk_ignore = ttk.Checkbutton(visibility_row, text="Ignore End-Effector", 
+                                     variable=self.ignore_eef_var, 
+                                     command=update_ghost_state,
+                                     state="disabled")
+        chk_ignore.pack(anchor="w", padx=5, pady=5)
+
+        ttk.Checkbutton(visibility_row, text="Collision Alerts", 
+                        variable=self.collision_alert_var).pack(anchor="w", padx=5, pady=5)
+
+        # ========== TAB 5: COLOR SETTINGS ==========
+        tab_color = ttk.Frame(notebook)
+        notebook.add(tab_color, text="Color")
+        tab_color.columnconfigure(0, weight=1)
+
+        cf_frame = ttk.LabelFrame(tab_color, text="Element Colors", padding=10)
+        cf_frame.pack(fill=tk.BOTH, expand=True, pady=5, padx=5)
 
         def create_color_row(parent, label_text, default_val, target_key):
             row = ttk.Frame(parent)
-            row.pack(fill=tk.X, pady=2)
+            row.pack(fill=tk.X, pady=5)
             
-            ttk.Label(row, text=label_text, width=10).pack(side=tk.LEFT, padx=5)
+            ttk.Label(row, text=label_text, width=15).pack(side=tk.LEFT, padx=5)
             
             var = tk.StringVar(value=default_val)
             self.color_vars[target_key] = var
-            ent = ttk.Entry(row, textvariable=var, width=10)
+            ent = ttk.Entry(row, textvariable=var, width=12)
             ent.pack(side=tk.LEFT, padx=5)
 
-            preview_lbl = tk.Label(row, width=3, relief="solid", borderwidth=1)
+            preview_lbl = tk.Label(row, width=4, height=2, relief="solid", borderwidth=1)
             preview_lbl.pack(side=tk.LEFT, padx=(0, 5))
             
             def update_preview(color):
@@ -666,89 +777,30 @@ class ControlPanel(tk.Tk):
                 var.set(default_val)
                 self._apply_color(target_key, default_val)
 
-            ttk.Button(row, text="↺", width=3,
-                       command=reset_action
-            ).pack(side=tk.RIGHT, padx=(2, 5))
+            ttk.Button(row, text="↺", width=2, command=reset_action).pack(side=tk.RIGHT, padx=(2, 5))
             
-            ttk.Button(row, text="Apply", 
-                       command=lambda: self._apply_color(target_key, var.get())
-            ).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
+            ttk.Button(row, text="Apply", command=lambda: self._apply_color(target_key, var.get())).pack(side=tk.RIGHT, padx=2)
 
         create_color_row(cf_frame, "Background:", config.COLOR_BG, "bg")
         create_color_row(cf_frame, "Robot Arm:", config.COLOR_BASE, "arm")
         create_color_row(cf_frame, "Wrist:", config.COLOR_WRIST, "wrist")
         create_color_row(cf_frame, "End-Effector:", config.COLOR_EEF, "eef")
         create_color_row(cf_frame, "Trace Line:", config.COLOR_PATH, "trace")
-        
-        ttk.Separator(cf_frame, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=5)
-        
-        # ROW 1: TRACE
-        trace_row = ttk.LabelFrame(right_col, text="Trace Settings")
-        trace_row.pack(fill=tk.X, pady=5)
 
-        def toggle_trace():
-            self.viz.set_trace_enable(self.trace_var.get())
-
-        self.chk_trace = ttk.Checkbutton(trace_row, text="Trace Path", 
-                        variable=self.trace_var, 
-                        command=toggle_trace)
-        self.chk_trace.pack(side=tk.LEFT, padx=5)
-
-        # 2. TRACE DROPDOWN
-        self.trace_mode_var = tk.StringVar(value="Wrist")
-        
-        def change_trace_source(event):
-            mode = self.trace_mode_var.get().lower()
-            self.viz.trace_source = mode
-            self.viz.clear_trace() 
-
-        self.trace_combo = ttk.Combobox(trace_row, textvariable=self.trace_mode_var, 
-                                   values=["Wrist", "Effector Tip"], state="readonly", width=10)
-        self.trace_combo.pack(side=tk.LEFT, padx=5)
-        self.trace_combo.bind("<<ComboboxSelected>>", change_trace_source)
-
-        # ROW 2: Visibility settings
-        visibility_row = ttk.LabelFrame(right_col, text="Visibility Settings")
-        visibility_row.pack(fill=tk.X, pady=5)
-
-        self.ghost_mode_var = tk.BooleanVar(value=False)
-        self.ignore_eef_var = tk.BooleanVar(value=False)
-        self.collision_alert_var = tk.BooleanVar(value=True)
-
-        def update_ghost_state():
-            is_ghost = self.ghost_mode_var.get()
-            ignore_eef = self.ignore_eef_var.get()    
-            
-            self.viz.set_ghost_mode(is_ghost, ignore_eef)
-            
-            if is_ghost:
-                chk_ignore.state(["!disabled"]) 
-            else:
-                chk_ignore.state(["disabled"])
-
-        ttk.Checkbutton(visibility_row, text="Ghost Mode", 
-                        variable=self.ghost_mode_var, 
-                        command=update_ghost_state).pack(side=tk.LEFT, padx=5)
-
-        chk_ignore = ttk.Checkbutton(visibility_row, text="Ignore Effector", 
-                                     variable=self.ignore_eef_var, 
-                                     command=update_ghost_state,
-                                     state="disabled")
-        chk_ignore.pack(side=tk.LEFT, padx=5)
-
-        ttk.Checkbutton(visibility_row, text="Collision Alerts", 
-                        variable=self.collision_alert_var).pack(side=tk.LEFT, padx=5)
-        
-
-        # COLUMN 3
-        log_col = ttk.Frame(top_container)
-        log_col.grid(row=0, column=2, sticky="nsew", padx=(5, 0))
+        # RIGHT COLUMN: Log
+        log_col = ttk.Frame(content_container)
+        log_col.grid(row=0, column=1, sticky="nsew", padx=(5, 0))
+        log_col.columnconfigure(0, weight=1)
+        log_col.rowconfigure(0, weight=1)
 
         logf = ttk.LabelFrame(log_col, text="System Log")
         logf.pack(fill=tk.BOTH, expand=True, pady=5)
         
         self.txt = scrolledtext.ScrolledText(logf, height=8, font=("Terminal", 11))
         self.txt.pack(fill=tk.BOTH, expand=True)
+
+        # Quit button
+        ttk.Button(left_col, text="Quit to Desktop", command=self._on_close).grid(row=2, column=0, sticky="ew", pady=(5, 0))
 
     def _speed_cb(self, val):
         v = float(val)
@@ -1039,12 +1091,11 @@ class ControlPanel(tk.Tk):
             self.api.disconnect_real_robot()
             self.btn_connect.config(text="Connect", state=tk.NORMAL)
             self.ent_ip.config(state=tk.NORMAL)
-            self._set_status_color("#ff5555") # Rood
+            self._set_status_color("#ff5555") # Red
             self.btn_scan.config(state=tk.NORMAL)
             self.ctx.log_queue.put("[GUI] Disconnected manually.")
         else:
             # CONNECT
-            self._set_manual_controls_state(False)
             ip = self.ent_ip.get().strip()
             
             if ip.lower() not in ["debug"]:
@@ -1055,7 +1106,7 @@ class ControlPanel(tk.Tk):
 
             self.btn_connect.config(state=tk.DISABLED, text="Connecting...")
             self.ent_ip.config(state=tk.DISABLED)
-            self._set_status_color("#ffb86c") # Oranje
+            self._set_status_color("#ffb86c") # Orange
             
             threading.Thread(target=self._connect_thread, args=(ip,), daemon=True).start()
 
@@ -1065,13 +1116,14 @@ class ControlPanel(tk.Tk):
 
     def _connect_complete(self, success, msg):
         if success:
+            self._set_manual_controls_state(False)
             self.btn_connect.config(text="Disconnect", state=tk.NORMAL)
-            self._set_status_color("#50fa7b") # Groen
+            self._set_status_color("#50fa7b") # Green
             self.ctx.log_queue.put(f"[GUI] Status: {msg}")
         else:
             self.btn_connect.config(text="Connect", state=tk.NORMAL)
             self.ent_ip.config(state=tk.NORMAL) 
-            self._set_status_color("#ff5555") # Rood
+            self._set_status_color("#ff5555") # Red
             
             self.ctx.log_queue.put(f"[CONNECTION FAILED] {msg}")
             
