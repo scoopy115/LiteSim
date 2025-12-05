@@ -915,7 +915,8 @@ class ControlPanel(tk.Tk):
                 ent.config(state=config_state)
         
         if hasattr(self, 'btn_reset'):
-            self.btn_reset.config(state=config_state)
+            reset_state = tk.DISABLED if (running or self.api.is_connected) else tk.NORMAL
+            self.btn_reset.config(state=reset_state)
 
     def _toggle_pause(self):
         if self.ctx.paused:
@@ -1616,7 +1617,8 @@ class ControlPanel(tk.Tk):
         ttk_state = ["!disabled"] if enable else ["disabled"]
 
         if hasattr(self, 'btn_reset'):
-            self.btn_reset.config(state=state)
+            reset_state = "normal" if (enable and not self.api.is_connected) else "disabled"
+            self.btn_reset.config(state=reset_state)
 
         if hasattr(self, 'joint_sliders'):
             for s in self.joint_sliders:
