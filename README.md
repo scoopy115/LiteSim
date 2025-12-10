@@ -61,8 +61,10 @@ If you prefer not to run the `.exe`, you can always run the source code directly
 
 ## ❤️ Credits & Acknowledgment
 
-This project was created by me with extensive assistance from **Gemini 3 Pro** (Google AI). The AI served as a co-pilot for architecture, UI design, and logic implementation.
+This project was developed within the context of the Artificial Kinship research lab at Avans University of Applied Sciences (Communication & Multimedia Design). Under the guidance of Mark Meeuwenoord, the lab explores the synergy between art, technology, and care. LiteSim is created by me with extensive assistance from **Gemini 3 Pro** (Google AI). The AI served as a co-pilot for architecture, UI design, and logic implementation.
 
+
+* **Mark's Researcher Profile:** [CARADTH.nl](https://caradt.nl/researcher/mark-meeuwenoord)
 * **SDK:** [xArm-Python-SDK](https://github.com/xArm-Developer/xArm-Python-SDK)
 * **Visualization:** [PyVista](https://docs.pyvista.org/)
 * **IK Solver:** [IKPy](https://github.com/Phylliade/ikpy)
