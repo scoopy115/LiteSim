@@ -47,6 +47,14 @@ However, LiteSim is compatible with these operating systems if run directly from
 1. Please set up a **Conda or Python environment** with the libraries found in `requirements.txt`
 2. **Run** `python main.py` to get started.
 
+### 🍎 macOS "Damaged" Error
+If macOS states the app is **"damaged and can't be opened"**, it is a false positive because the app is unsigned.
+
+**To fix this:**
+1. Open **Terminal**.
+2. Type `xattr -cr ` (include the trailing space).
+3. Drag `LiteSim.app` into the Terminal window and hit **Enter**.
+
 ### 🛡️ Windows Defender Warning
 When launching `LiteSim.exe`, Windows might show a blue pop-up saying **"Windows protected your PC"**.
 This happens because this is open-source software and does not have an expensive digital signature.
